@@ -65,7 +65,7 @@ class SaleAdmin(ImportExportModelAdmin):
     search_fields = ('id', 'customer__name', 'user__username')
     readonly_fields = ('user', 'subtotal', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
     fieldsets = (
-        (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'status', 'notes')}),
+        (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'notes')}),
         (_('Finances'), {'fields': ('subtotal', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
         (_('Métadonnées'), {'fields': ('user', 'created_at', 'updated_at')}),
     )
