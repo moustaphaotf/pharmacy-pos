@@ -31,6 +31,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'accounts',
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -44,7 +46,8 @@ INSTALLED_APPS = [
     'import_export',
     'django_extensions',
     'anymail',
-    'core',
+    'catalog',
+    'sales',
 ]
 
 MIDDLEWARE = [
@@ -83,7 +86,7 @@ WSGI_APPLICATION = 'pharmacy_pos.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'db2.sqlite3',
     }
 }
 
@@ -110,9 +113,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'fr'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Africa/Dakar'
 
 USE_I18N = True
 
@@ -134,7 +137,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'core.User'
+AUTH_USER_MODEL = 'accounts.User'
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = ('bootstrap4', 'bootstrap5')
 CRISPY_TEMPLATE_PACK = 'bootstrap5'

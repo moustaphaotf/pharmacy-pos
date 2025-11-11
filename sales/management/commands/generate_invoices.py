@@ -10,23 +10,23 @@ from django.db.models import Prefetch, Q
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from core.models import Invoice, Sale, SaleItem
+from sales.models import Invoice, Sale, SaleItem
 
 
 class Command(BaseCommand):
-    help = 'Generate PDF invoices for sales and attach them to invoice records.'
+    help = 'Génère des factures PDF pour les ventes sélectionnées et les rattache aux enregistrements.'
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument(
             '--sale-id',
             type=int,
             dest='sale_id',
-            help='Generate invoice only for the specified sale ID.',
+            help='Génère la facture uniquement pour la vente spécifiée (ID).',
         )
         parser.add_argument(
             '--force',
             action='store_true',
-            help='Regenerate invoices even if a PDF already exists.',
+            help='Regénère les factures même si un PDF existe déjà.',
         )
 
     def handle(self, *args, **options) -> None:
@@ -36,7 +36,7 @@ class Command(BaseCommand):
         sales = self._get_sales_queryset(sale_id, force)
 
         if not sales:
-            self.stdout.write(self.style.WARNING('No matching sales found.'))
+            self.stdout.write(self.style.WARNING('Aucune vente correspondante.'))
             return
 
         for sale in sales:
@@ -46,7 +46,7 @@ class Command(BaseCommand):
             )
 
             if invoice.pdf and not force:
-                self.stdout.write(f'Skipping sale #{sale.pk} (PDF already exists).')
+                self.stdout.write(f'Vente #{sale.pk} ignorée (PDF déjà présent).')
                 continue
 
             buffer = BytesIO()
@@ -54,7 +54,7 @@ class Command(BaseCommand):
             pdf_name = f'{invoice.invoice_number}.pdf'
             invoice.pdf.save(pdf_name, ContentFile(buffer.getvalue()), save=False)
             invoice.save(update_fields=['pdf', 'updated_at'])
-            self.stdout.write(self.style.SUCCESS(f'Generated invoice for sale #{sale.pk} → {pdf_name}'))
+            self.stdout.write(self.style.SUCCESS(f'Facture générée pour la vente #{sale.pk} → {pdf_name}'))
 
     def _get_sales_queryset(self, sale_id: Optional[int], force: bool) -> Iterable[Sale]:
         queryset = (
@@ -84,27 +84,27 @@ class Command(BaseCommand):
         y_position = height - margin
 
         document.setFont('Helvetica-Bold', 16)
-        document.drawString(margin, y_position, 'Pharmacy POS Invoice')
+        document.drawString(margin, y_position, 'Facture - Pharmacy POS')
 
         document.setFont('Helvetica', 10)
         y_position -= 25
-        document.drawString(margin, y_position, f'Invoice number: {invoice.invoice_number}')
+        document.drawString(margin, y_position, f'Numéro de facture : {invoice.invoice_number}')
         y_position -= 15
-        document.drawString(margin, y_position, f'Sale ID: {sale.pk}')
+        document.drawString(margin, y_position, f'ID Vente : {sale.pk}')
         y_position -= 15
-        document.drawString(margin, y_position, f'Date: {sale.sale_date.strftime("%Y-%m-%d %H:%M")}')
+        document.drawString(margin, y_position, f'Date : {sale.sale_date.strftime("%d/%m/%Y %H:%M")}')
         y_position -= 15
-        document.drawString(margin, y_position, f'Customer: {sale.customer or "Walk-in"}')
+        document.drawString(margin, y_position, f'Client : {sale.customer or "Client de passage"}')
 
         y_position -= 25
         document.setFont('Helvetica-Bold', 12)
-        document.drawString(margin, y_position, 'Items')
+        document.drawString(margin, y_position, 'Articles')
         y_position -= 20
 
         document.setFont('Helvetica', 10)
-        document.drawString(margin, y_position, 'Product')
-        document.drawString(margin + 220, y_position, 'Qty')
-        document.drawString(margin + 260, y_position, 'Unit price')
+        document.drawString(margin, y_position, 'Produit')
+        document.drawString(margin + 220, y_position, 'Qté')
+        document.drawString(margin + 260, y_position, 'Prix unitaire')
         document.drawString(margin + 350, y_position, 'Total')
         y_position -= 15
         document.line(margin, y_position, width - margin, y_position)
@@ -125,22 +125,22 @@ class Command(BaseCommand):
         y_position -= 20
 
         document.setFont('Helvetica-Bold', 11)
-        document.drawString(margin + 260, y_position, 'Subtotal:')
+        document.drawString(margin + 260, y_position, 'Sous-total :')
         document.drawString(margin + 350, y_position, f'{sale.subtotal:.2f}')
         y_position -= 15
 
-        document.drawString(margin + 260, y_position, 'Tax:')
+        document.drawString(margin + 260, y_position, 'Taxe :')
         document.drawString(margin + 350, y_position, f'{sale.tax_amount:.2f}')
         y_position -= 15
 
-        document.drawString(margin + 260, y_position, 'Total:')
+        document.drawString(margin + 260, y_position, 'Total :')
         document.drawString(margin + 350, y_position, f'{sale.total_amount:.2f}')
         y_position -= 25
 
         document.setFont('Helvetica', 10)
-        document.drawString(margin, y_position, f'Amount paid: {sale.amount_paid:.2f}')
+        document.drawString(margin, y_position, f'Montant payé : {sale.amount_paid:.2f}')
         y_position -= 15
-        document.drawString(margin, y_position, f'Balance due: {sale.balance_due:.2f}')
+        document.drawString(margin, y_position, f'Reste à payer : {sale.balance_due:.2f}')
 
         document.showPage()
         document.save()

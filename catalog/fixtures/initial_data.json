@@ -1,93 +1,93 @@
 [
   {
-    "model": "core.category",
+    "model": "catalog.category",
     "pk": 1,
     "fields": {
-      "name": "Pain Relief",
+      "name": "Antalgiques",
       "code": "CAT_001",
-      "description": "Analgesic medications",
+      "description": "Médicaments contre la douleur",
       "created_at": "2025-01-01T08:00:00Z",
       "updated_at": "2025-01-01T08:00:00Z"
     }
   },
   {
-    "model": "core.category",
+    "model": "catalog.category",
     "pk": 2,
     "fields": {
-      "name": "Cold & Flu",
+      "name": "Rhume & Grippe",
       "code": "CAT_002",
-      "description": "Cold and flu treatments",
+      "description": "Traitements pour le rhume et la grippe",
       "created_at": "2025-01-01T08:05:00Z",
       "updated_at": "2025-01-01T08:05:00Z"
     }
   },
   {
-    "model": "core.category",
+    "model": "catalog.category",
     "pk": 3,
     "fields": {
-      "name": "Vitamins",
+      "name": "Vitamines",
       "code": "CAT_003",
-      "description": "Nutrition supplements",
+      "description": "Suppléments nutritionnels",
       "created_at": "2025-01-01T08:10:00Z",
       "updated_at": "2025-01-01T08:10:00Z"
     }
   },
   {
-    "model": "core.dosageform",
+    "model": "catalog.dosageform",
     "pk": 1,
     "fields": {
-      "name": "Tablet",
+      "name": "Comprimé",
       "created_at": "2025-01-01T09:00:00Z",
       "updated_at": "2025-01-01T09:00:00Z"
     }
   },
   {
-    "model": "core.dosageform",
+    "model": "catalog.dosageform",
     "pk": 2,
     "fields": {
-      "name": "Capsule",
+      "name": "Gélule",
       "created_at": "2025-01-01T09:05:00Z",
       "updated_at": "2025-01-01T09:05:00Z"
     }
   },
   {
-    "model": "core.dosageform",
+    "model": "catalog.dosageform",
     "pk": 3,
     "fields": {
-      "name": "Syrup",
+      "name": "Sirop",
       "created_at": "2025-01-01T09:10:00Z",
       "updated_at": "2025-01-01T09:10:00Z"
     }
   },
   {
-    "model": "core.supplier",
+    "model": "catalog.supplier",
     "pk": 1,
     "fields": {
       "name": "Health Supplier Co.",
       "email": "contact@healthsupplier.com",
       "phone": "+221770000001",
-      "address": "123 Pharma Street, Dakar",
+      "address": "123 rue de la Pharmacie, Dakar",
       "created_at": "2025-01-02T10:00:00Z",
       "updated_at": "2025-01-02T10:00:00Z"
     }
   },
   {
-    "model": "core.supplier",
+    "model": "catalog.supplier",
     "pk": 2,
     "fields": {
       "name": "Global Pharma Distribution",
       "email": "sales@globalpharma.com",
       "phone": "+221770000002",
-      "address": "456 Medical Avenue, Dakar",
+      "address": "456 avenue Médicale, Dakar",
       "created_at": "2025-01-02T10:05:00Z",
       "updated_at": "2025-01-02T10:05:00Z"
     }
   },
   {
-    "model": "core.product",
+    "model": "catalog.product",
     "pk": 1,
     "fields": {
-      "name": "Paracetamol 500mg",
+      "name": "Paracétamol 500mg",
       "barcode": "BAR0001",
       "category": 1,
       "dosage_form": 1,
@@ -104,10 +104,10 @@
     }
   },
   {
-    "model": "core.product",
+    "model": "catalog.product",
     "pk": 2,
     "fields": {
-      "name": "Ibuprofen 400mg",
+      "name": "Ibuprofène 400mg",
       "barcode": "BAR0002",
       "category": 1,
       "dosage_form": 2,
@@ -124,10 +124,10 @@
     }
   },
   {
-    "model": "core.product",
+    "model": "catalog.product",
     "pk": 3,
     "fields": {
-      "name": "Cough Syrup 100ml",
+      "name": "Sirop contre la toux 100ml",
       "barcode": "BAR0003",
       "category": 2,
       "dosage_form": 3,
@@ -144,10 +144,10 @@
     }
   },
   {
-    "model": "core.product",
+    "model": "catalog.product",
     "pk": 4,
     "fields": {
-      "name": "Vitamin C 1000mg",
+      "name": "Vitamine C 1000mg",
       "barcode": "BAR0004",
       "category": 3,
       "dosage_form": 2,
@@ -164,3 +164,4 @@
     }
   }
 ]
+
