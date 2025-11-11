@@ -1,0 +1,166 @@
+[
+  {
+    "model": "core.category",
+    "pk": 1,
+    "fields": {
+      "name": "Pain Relief",
+      "code": "CAT_001",
+      "description": "Analgesic medications",
+      "created_at": "2025-01-01T08:00:00Z",
+      "updated_at": "2025-01-01T08:00:00Z"
+    }
+  },
+  {
+    "model": "core.category",
+    "pk": 2,
+    "fields": {
+      "name": "Cold & Flu",
+      "code": "CAT_002",
+      "description": "Cold and flu treatments",
+      "created_at": "2025-01-01T08:05:00Z",
+      "updated_at": "2025-01-01T08:05:00Z"
+    }
+  },
+  {
+    "model": "core.category",
+    "pk": 3,
+    "fields": {
+      "name": "Vitamins",
+      "code": "CAT_003",
+      "description": "Nutrition supplements",
+      "created_at": "2025-01-01T08:10:00Z",
+      "updated_at": "2025-01-01T08:10:00Z"
+    }
+  },
+  {
+    "model": "core.dosageform",
+    "pk": 1,
+    "fields": {
+      "name": "Tablet",
+      "created_at": "2025-01-01T09:00:00Z",
+      "updated_at": "2025-01-01T09:00:00Z"
+    }
+  },
+  {
+    "model": "core.dosageform",
+    "pk": 2,
+    "fields": {
+      "name": "Capsule",
+      "created_at": "2025-01-01T09:05:00Z",
+      "updated_at": "2025-01-01T09:05:00Z"
+    }
+  },
+  {
+    "model": "core.dosageform",
+    "pk": 3,
+    "fields": {
+      "name": "Syrup",
+      "created_at": "2025-01-01T09:10:00Z",
+      "updated_at": "2025-01-01T09:10:00Z"
+    }
+  },
+  {
+    "model": "core.supplier",
+    "pk": 1,
+    "fields": {
+      "name": "Health Supplier Co.",
+      "email": "contact@healthsupplier.com",
+      "phone": "+221770000001",
+      "address": "123 Pharma Street, Dakar",
+      "created_at": "2025-01-02T10:00:00Z",
+      "updated_at": "2025-01-02T10:00:00Z"
+    }
+  },
+  {
+    "model": "core.supplier",
+    "pk": 2,
+    "fields": {
+      "name": "Global Pharma Distribution",
+      "email": "sales@globalpharma.com",
+      "phone": "+221770000002",
+      "address": "456 Medical Avenue, Dakar",
+      "created_at": "2025-01-02T10:05:00Z",
+      "updated_at": "2025-01-02T10:05:00Z"
+    }
+  },
+  {
+    "model": "core.product",
+    "pk": 1,
+    "fields": {
+      "name": "Paracetamol 500mg",
+      "barcode": "BAR0001",
+      "category": 1,
+      "dosage_form": 1,
+      "purchase_price": "500.00",
+      "sale_price": "650.00",
+      "stock_quantity": 200,
+      "stock_threshold": 50,
+      "expiration_date": "2026-06-30",
+      "supplier": 1,
+      "notes": "",
+      "image": "",
+      "created_at": "2025-01-03T08:00:00Z",
+      "updated_at": "2025-01-03T08:00:00Z"
+    }
+  },
+  {
+    "model": "core.product",
+    "pk": 2,
+    "fields": {
+      "name": "Ibuprofen 400mg",
+      "barcode": "BAR0002",
+      "category": 1,
+      "dosage_form": 2,
+      "purchase_price": "700.00",
+      "sale_price": "900.00",
+      "stock_quantity": 150,
+      "stock_threshold": 40,
+      "expiration_date": "2026-12-31",
+      "supplier": 1,
+      "notes": "",
+      "image": "",
+      "created_at": "2025-01-03T08:05:00Z",
+      "updated_at": "2025-01-03T08:05:00Z"
+    }
+  },
+  {
+    "model": "core.product",
+    "pk": 3,
+    "fields": {
+      "name": "Cough Syrup 100ml",
+      "barcode": "BAR0003",
+      "category": 2,
+      "dosage_form": 3,
+      "purchase_price": "1200.00",
+      "sale_price": "1500.00",
+      "stock_quantity": 80,
+      "stock_threshold": 20,
+      "expiration_date": "2026-03-31",
+      "supplier": 2,
+      "notes": "",
+      "image": "",
+      "created_at": "2025-01-03T08:10:00Z",
+      "updated_at": "2025-01-03T08:10:00Z"
+    }
+  },
+  {
+    "model": "core.product",
+    "pk": 4,
+    "fields": {
+      "name": "Vitamin C 1000mg",
+      "barcode": "BAR0004",
+      "category": 3,
+      "dosage_form": 2,
+      "purchase_price": "900.00",
+      "sale_price": "1150.00",
+      "stock_quantity": 120,
+      "stock_threshold": 30,
+      "expiration_date": "2027-01-31",
+      "supplier": 2,
+      "notes": "",
+      "image": "",
+      "created_at": "2025-01-03T08:15:00Z",
+      "updated_at": "2025-01-03T08:15:00Z"
+    }
+  }
+]

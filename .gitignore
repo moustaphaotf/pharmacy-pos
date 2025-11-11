@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Django
+*.log
+db.sqlite3
+media/
+staticfiles/
+static/
+
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache
+*.bak
+*.tmp
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+.Python
+__pycache__/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.insta
