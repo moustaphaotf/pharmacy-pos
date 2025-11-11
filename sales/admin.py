@@ -1,4 +1,6 @@
+from django import forms
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
 
@@ -23,6 +25,10 @@ class SaleItemInline(admin.TabularInline):
     model = SaleItem
     extra = 1
     autocomplete_fields = ('product',)
+    readonly_fields = ('unit_price', 'line_total')
+    min_num = 1
+    validate_min = True
+    fields = ('product', 'quantity', 'unit_price', 'line_total')
 
 
 class PaymentInline(admin.TabularInline):
@@ -57,13 +63,36 @@ class SaleAdmin(ImportExportModelAdmin):
     list_display = ('id', 'sale_date', 'customer', 'user', 'total_amount', 'amount_paid', 'status')
     list_filter = ('status', 'payment_method', 'sale_date')
     search_fields = ('id', 'customer__name', 'user__username')
-    readonly_fields = ('subtotal', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
+    readonly_fields = ('user', 'subtotal', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
     fieldsets = (
-        (None, {'fields': ('customer', 'user', 'sale_date', 'payment_method', 'status', 'notes')}),
-        ('Finances', {'fields': ('subtotal', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
-        ('Métadonnées', {'fields': ('created_at', 'updated_at')}),
+        (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'status', 'notes')}),
+        (_('Finances'), {'fields': ('subtotal', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
+        (_('Métadonnées'), {'fields': ('user', 'created_at', 'updated_at')}),
     )
     inlines = [SaleItemInline, PaymentInline]
+
+    def get_fieldsets(self, request, obj=None):
+        if obj is None:
+            return (
+                (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'status', 'notes')}),
+            )
+        return super().get_fieldsets(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is None:
+            readonly.append('tax_amount')
+        return readonly
+
+    def save_model(self, request, obj, form, change):
+        if not obj.user_id:
+            obj.user = request.user
+        super().save_model(request, obj, form, change)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        form.base_fields['customer'].required = True
+        return form
 
 
 @admin.register(SaleItem)

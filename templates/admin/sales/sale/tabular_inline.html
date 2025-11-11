@@ -1,0 +1,10 @@
+{% extends "admin/edit_inline/tabular.html" %} {% block after_field_sets %}
+<tfoot>
+  <tr>
+    <td colspan="{{ inline_admin_form.field_count|add:'1' }}" class="text-end">
+      <strong>Total lignes :</strong>
+      <span class="js-sale-items-total" data-target="line_total">0.00</span>
+    </td>
+  </tr>
+</tfoot>
+{% endblock %}
