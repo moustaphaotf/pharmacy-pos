@@ -11,6 +11,7 @@ class User(AbstractUser):
         PHARMACIST = 'pharmacist', 'Pharmacien'
 
     role = models.CharField(
+        verbose_name='Rôle',
         max_length=20,
         choices=Roles.choices,
         default=Roles.CASHIER,
@@ -20,3 +21,7 @@ class User(AbstractUser):
         full_name = self.get_full_name()
         display_name = full_name or self.username
         return f'{display_name} ({self.get_role_display()})'
+
+    class Meta(AbstractUser.Meta):
+        verbose_name = 'Utilisateur'
+        verbose_name_plural = 'Utilisateurs'

@@ -86,7 +86,7 @@ WSGI_APPLICATION = 'pharmacy_pos.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db2.sqlite3',
+        'NAME': BASE_DIR / 'db3.sqlite3',
     }
 }
 
@@ -146,4 +146,13 @@ ANYMAIL = {
     'DEFAULTS': {
         'track_clicks': True,
     },
+}
+
+JAZZMIN_SETTINGS = {
+    'site_title': 'Pharmacie de la Poste',
+    'site_header': 'Pharmacie de la Poste',
+    'site_brand': 'Pharmacie de la Poste',
+    'welcome_sign': 'La Pharmacie de la Poste',
+    'show_ui_builder': False,
+    'show_version': False,
 }

@@ -15,17 +15,20 @@ from pharmacy_pos.common.models import TimeStampedModel
 
 
 class Customer(TimeStampedModel):
-    name = models.CharField(max_length=255)
-    phone = models.CharField(max_length=50, blank=True)
-    email = models.EmailField(blank=True)
-    address = models.TextField(blank=True)
+    name = models.CharField('Nom', max_length=255)
+    phone = models.CharField('Téléphone', max_length=50, blank=True)
+    email = models.EmailField('Email', blank=True)
+    address = models.TextField('Adresse', blank=True)
     credit_balance = models.DecimalField(
+        'Solde crédit',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
 
     class Meta:
+        verbose_name = 'Client'
+        verbose_name_plural = 'Clients'
         ordering = ['name']
 
     def __str__(self) -> str:
@@ -49,52 +52,63 @@ class Sale(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        verbose_name='Client',
     )
-    sale_date = models.DateTimeField(default=timezone.now)
+    sale_date = models.DateTimeField('Date de vente', default=timezone.now)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         related_name='sales',
         on_delete=models.PROTECT,
+        verbose_name='Utilisateur',
     )
     subtotal = models.DecimalField(
+        'Sous-total',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
     tax_amount = models.DecimalField(
+        'Taxe',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
     total_amount = models.DecimalField(
+        'Total TTC',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
     payment_method = models.CharField(
+        'Mode de paiement',
         max_length=20,
         choices=PaymentMethod.choices,
         default=PaymentMethod.CASH,
     )
     amount_paid = models.DecimalField(
+        'Montant payé',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
         validators=[MinValueValidator(Decimal('0.00'))],
     )
     balance_due = models.DecimalField(
+        'Solde restant',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
     status = models.CharField(
+        'Statut',
         max_length=20,
         choices=Status.choices,
         default=Status.DRAFT,
     )
-    notes = models.TextField(blank=True)
+    notes = models.TextField('Notes', blank=True)
 
     class Meta:
+        verbose_name = 'Vente'
+        verbose_name_plural = 'Ventes'
         ordering = ['-sale_date']
 
     def __str__(self) -> str:
@@ -163,27 +177,34 @@ class SaleItem(TimeStampedModel):
         Sale,
         related_name='items',
         on_delete=models.CASCADE,
+        verbose_name='Vente',
     )
     product = models.ForeignKey(
         Product,
         related_name='sale_items',
         on_delete=models.PROTECT,
+        verbose_name='Produit',
     )
     quantity = models.PositiveIntegerField(
+        'Quantité',
         validators=[MinValueValidator(1)],
     )
     unit_price = models.DecimalField(
+        'Prix unitaire',
         max_digits=12,
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.00'))],
     )
     line_total = models.DecimalField(
+        'Total ligne',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
     )
 
     class Meta:
+        verbose_name = 'Ligne de vente'
+        verbose_name_plural = 'Lignes de vente'
         unique_together = ('sale', 'product')
 
     def __str__(self) -> str:
@@ -233,14 +254,17 @@ class Invoice(TimeStampedModel):
         Sale,
         related_name='invoice',
         on_delete=models.CASCADE,
+        verbose_name='Vente',
     )
-    invoice_number = models.CharField(max_length=100, unique=True)
-    invoice_date = models.DateTimeField(default=timezone.now)
-    pdf = models.FileField(upload_to='invoices/', blank=True, null=True)
-    sent_email = models.BooleanField(default=False)
-    sent_sms = models.BooleanField(default=False)
+    invoice_number = models.CharField('Numéro de facture', max_length=100, unique=True)
+    invoice_date = models.DateTimeField('Date de facture', default=timezone.now)
+    pdf = models.FileField('Fichier PDF', upload_to='invoices/', blank=True, null=True)
+    sent_email = models.BooleanField('Envoyée par email', default=False)
+    sent_sms = models.BooleanField('Envoyée par SMS', default=False)
 
     class Meta:
+        verbose_name = 'Facture'
+        verbose_name_plural = 'Factures'
         ordering = ['-invoice_date']
 
     def __str__(self) -> str:
@@ -263,19 +287,24 @@ class Payment(TimeStampedModel):
         Sale,
         related_name='payments',
         on_delete=models.CASCADE,
+        verbose_name='Vente',
     )
     amount = models.DecimalField(
+        'Montant',
         max_digits=12,
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))],
     )
     payment_method = models.CharField(
+        'Mode de paiement',
         max_length=20,
         choices=Sale.PaymentMethod.choices,
     )
-    payment_date = models.DateTimeField(default=timezone.now)
+    payment_date = models.DateTimeField('Date de paiement', default=timezone.now)
 
     class Meta:
+        verbose_name = 'Paiement'
+        verbose_name_plural = 'Paiements'
         ordering = ['-payment_date']
 
     def __str__(self) -> str:
