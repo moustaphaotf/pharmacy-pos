@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Ping Render app
         run: |
-          curl --fail --silent --show-error https://pharmacy-pos-1.onrender.com/admin
+          curl --fail --silent --show-error https://pharmacy-pos-6hw9.onrender.com/admin
