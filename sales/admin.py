@@ -29,19 +29,19 @@ class SaleItemLotInline(admin.TabularInline):
     fields = ('lot', 'quantity', 'unit_price')
 
 
-class SaleItemInline(admin.TabularInline):
-    model = SaleItem
-    extra = 1
-    autocomplete_fields = ('product',)
-    readonly_fields = ('unit_price', 'line_total')
-    min_num = 1
-    validate_min = True
-    fields = ('product', 'quantity', 'unit_price', 'line_total')
+# Inlines désactivés car React gère tout le formulaire
+# class SaleItemInline(admin.TabularInline):
+#     model = SaleItem
+#     extra = 0
+#     autocomplete_fields = ('product',)
+#     readonly_fields = ('unit_price', 'line_total')
+#     min_num = 0
+#     validate_min = False
+#     fields = ('product', 'quantity', 'unit_price', 'line_total')
 
-
-class PaymentInline(admin.TabularInline):
-    model = Payment
-    extra = 0
+# class PaymentInline(admin.TabularInline):
+#     model = Payment
+#     extra = 0
 
 
 class SaleResource(resources.ModelResource):
@@ -76,7 +76,14 @@ class SaleAdmin(ImportExportModelAdmin):
         (_('Finances'), {'fields': ('subtotal', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
         (_('Métadonnées'), {'fields': ('user', 'status', 'created_at', 'updated_at')}),
     )
-    inlines = [SaleItemInline, PaymentInline]
+    # Inlines désactivés car React gère tout
+    # inlines = [SaleItemInline, PaymentInline]
+    
+    # Désactiver les onglets pour cette vue (via le template)
+    changeform_format = 'single'
+    
+    # Utiliser le template React pour toutes les ventes (ajout et modification)
+    change_form_template = 'admin/sales/sale/change_form_react.html'
 
     def get_fieldsets(self, request, obj=None):
         if obj is None:
@@ -100,6 +107,15 @@ class SaleAdmin(ImportExportModelAdmin):
         form = super().get_form(request, obj, **kwargs)
         form.base_fields['customer'].required = True
         return form
+    
+    def get_changeform_initial_data(self, request):
+        """
+        Initialise les données par défaut pour une nouvelle vente.
+        """
+        initial = super().get_changeform_initial_data(request)
+        from django.utils import timezone
+        initial['sale_date'] = timezone.now()
+        return initial
 
 
 @admin.register(SaleItem)

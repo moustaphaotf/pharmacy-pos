@@ -48,6 +48,13 @@ class Sale(TimeStampedModel):
         decimal_places=2,
         default=Decimal('0.00'),
     )
+    discount_amount = models.DecimalField(
+        'Remise',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Montant de la remise appliquée à la vente',
+    )
     total_amount = models.DecimalField(
         'Total TTC',
         max_digits=12,
@@ -85,8 +92,8 @@ class Sale(TimeStampedModel):
 
     def update_totals_from_items(self) -> None:
         subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
-        self.subtotal = subtotal
-        self.total_amount = subtotal + self.tax_amount
+        self.subtotal = subtotal - self.discount_amount  # Sous-total après remise
+        self.total_amount = self.subtotal + self.tax_amount
         self.balance_due = self.total_amount - self.amount_paid
         self.status = self.compute_status()
         self.save(update_fields=['subtotal', 'total_amount', 'balance_due', 'status', 'updated_at'])
@@ -134,7 +141,13 @@ class Sale(TimeStampedModel):
             previous_customer_id = Sale.objects.only('customer_id').get(pk=self.pk).customer_id
         self.subtotal = self.subtotal or Decimal('0.00')
         self.tax_amount = self.tax_amount or Decimal('0.00')
+        self.discount_amount = self.discount_amount or Decimal('0.00')
         self.amount_paid = self.amount_paid or Decimal('0.00')
+        # Le subtotal est déjà calculé après remise dans update_totals_from_items
+        # Sinon, on recalcule ici
+        if not hasattr(self, '_totals_updated'):
+            items_subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
+            self.subtotal = items_subtotal - self.discount_amount
         self.total_amount = self.subtotal + self.tax_amount
         self.balance_due = self.total_amount - self.amount_paid
         self.status = self.compute_status()
