@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
 
-from .models import Customer, Invoice, Payment, Sale, SaleItem
+from .models import Customer, Invoice, Payment, Sale, SaleItem, SaleItemLot
 
 
 class CustomerResource(resources.ModelResource):
@@ -19,6 +19,14 @@ class CustomerAdmin(ImportExportModelAdmin):
     resource_class = CustomerResource
     list_display = ('name', 'email', 'phone', 'credit_balance')
     search_fields = ('name', 'email', 'phone')
+
+
+class SaleItemLotInline(admin.TabularInline):
+    model = SaleItemLot
+    extra = 0
+    readonly_fields = ('lot', 'quantity', 'unit_price')
+    can_delete = False
+    fields = ('lot', 'quantity', 'unit_price')
 
 
 class SaleItemInline(admin.TabularInline):
@@ -49,7 +57,6 @@ class SaleResource(resources.ModelResource):
             'total_amount',
             'amount_paid',
             'balance_due',
-            'payment_method',
             'status',
             'created_at',
             'updated_at',
@@ -60,21 +67,21 @@ class SaleResource(resources.ModelResource):
 @admin.register(Sale)
 class SaleAdmin(ImportExportModelAdmin):
     resource_class = SaleResource
-    list_display = ('id', 'sale_date', 'customer', 'user', 'total_amount', 'amount_paid', 'status')
-    list_filter = ('status', 'payment_method', 'sale_date')
+    list_display = ('id', 'sale_date', 'customer', 'user', 'total_amount', 'amount_paid', 'balance_due', 'status')
+    list_filter = ('status', 'sale_date')
     search_fields = ('id', 'customer__name', 'user__username')
     readonly_fields = ('user', 'subtotal', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
     fieldsets = (
-        (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'notes')}),
+        (_('Général'), {'fields': ('customer', 'sale_date', 'notes')}),
         (_('Finances'), {'fields': ('subtotal', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
-        (_('Métadonnées'), {'fields': ('user', 'created_at', 'updated_at')}),
+        (_('Métadonnées'), {'fields': ('user', 'status', 'created_at', 'updated_at')}),
     )
     inlines = [SaleItemInline, PaymentInline]
 
     def get_fieldsets(self, request, obj=None):
         if obj is None:
             return (
-                (_('Général'), {'fields': ('customer', 'sale_date', 'payment_method', 'status', 'notes')}),
+                (_('Général'), {'fields': ('customer', 'sale_date', 'status', 'notes')}),
             )
         return super().get_fieldsets(request, obj)
 
@@ -100,6 +107,15 @@ class SaleItemAdmin(ImportExportModelAdmin):
     list_display = ('sale', 'product', 'quantity', 'unit_price', 'line_total')
     list_filter = ('product', 'sale')
     search_fields = ('sale__id', 'product__name', 'product__barcode')
+    inlines = [SaleItemLotInline]
+
+
+@admin.register(SaleItemLot)
+class SaleItemLotAdmin(ImportExportModelAdmin):
+    list_display = ('sale_item', 'lot', 'quantity', 'unit_price')
+    list_filter = ('lot__product', 'lot__expiration_date')
+    search_fields = ('sale_item__product__name', 'lot__batch_number')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(Payment)

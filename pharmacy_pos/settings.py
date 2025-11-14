@@ -258,13 +258,16 @@ JAZZMIN_SETTINGS = {
         "catalog.Category": "fas fa-box",
         "catalog.Product": "fas fa-pills",
         "catalog.Supplier": "fas fa-truck",
+        "catalog.PurchaseOrder": "fas fa-shopping-bag",
+        "catalog.Lot": "fas fa-boxes",
         "catalog.StockMovement": "fas fa-exchange-alt",
         "catalog.DosageForm": "fas fa-pills",
         "sales.Sale": "fas fa-cash-register",
-        "sales.Customer":"fas fa-user",
+        "sales.Customer": "fas fa-user",
         "sales.Invoice": "fas fa-file-invoice",
         "sales.Payment": "fas fa-money-bill",
-        "sales.SaleItem": "fas fa-shopping-cart"
+        "sales.SaleItem": "fas fa-shopping-cart",
+        "sales.SaleItemLot": "fas fa-tags",
     },
     # Icons that are used when one is not manually specified
     "default_icon_parents": "fas fa-chevron-circle-right",

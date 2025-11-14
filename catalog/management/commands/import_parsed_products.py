@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import transaction
+from django.utils import timezone
 
-from catalog.models import Category, DosageForm, Product, StockMovement, Supplier
+from catalog.models import (
+    Category,
+    DosageForm,
+    Lot,
+    Product,
+    PurchaseOrder,
+    StockMovement,
+    Supplier,
+)
 
 
 class Command(BaseCommand):
@@ -98,34 +108,76 @@ class Command(BaseCommand):
         if supplier_name:
             supplier, _ = Supplier.objects.get_or_create(name=supplier_name)
 
+        # Créer ou mettre à jour le produit (sans stock_quantity, expiration_date, purchase_price, sale_price)
         product_defaults = {
             'name': item.get('name', ''),
             'category': category,
             'dosage_form': dosage_form,
             'supplier': supplier,
-            'purchase_price': self._decimal_or_default(item.get('cost')),
-            'sale_price': self._decimal_or_default(item.get('price')),
-            'stock_quantity': item.get('quantity') or 0,
             'stock_threshold': item.get('stock_alert') or 0,
-            'expiration_date': item.get('expiration_date') or None,
             'notes': item.get('note') or '',
         }
 
-        product, created = Product.objects.update_or_create(
+        product, product_created = Product.objects.update_or_create(
             barcode=barcode,
             defaults=product_defaults,
         )
 
-        if created and not dry_run:
-            StockMovement.objects.create(
-                product=product,
-                movement_type=StockMovement.MovementType.ADJUSTMENT,
-                quantity=product.stock_quantity,
-                source='Initial import',
-                comment='Initial stock from parsed feed',
+        # Si le produit a une quantité et une date d'expiration, créer un lot
+        quantity = item.get('quantity') or 0
+        expiration_date_str = item.get('expiration_date')
+        purchase_price = self._decimal_or_default(item.get('cost'))
+        sale_price = self._decimal_or_default(item.get('price'))
+
+        if quantity > 0 and expiration_date_str and not dry_run:
+            # Créer une commande d'achat par défaut pour l'import
+            # Utiliser le supplier du produit ou créer un supplier par défaut
+            import_supplier = supplier
+            if not import_supplier:
+                import_supplier, _ = Supplier.objects.get_or_create(
+                    name='Import automatique',
+                    defaults={'notes': 'Fournisseur créé automatiquement lors de l\'import'}
+                )
+            
+            purchase_order, _ = PurchaseOrder.objects.get_or_create(
+                supplier=import_supplier,
+                status=PurchaseOrder.Status.RECEIVED,
+                defaults={
+                    'order_date': timezone.now(),
+                    'receipt_date': timezone.now(),
+                    'notes': 'Import automatique depuis parsed feed',
+                },
             )
 
-        return 'created' if created else 'updated'
+            # Parser la date d'expiration
+            try:
+                expiration_date = date.fromisoformat(expiration_date_str) if expiration_date_str else None
+            except (ValueError, TypeError):
+                expiration_date = None
+
+            if expiration_date:
+                # Créer le lot
+                lot = Lot.objects.create(
+                    purchase_order=purchase_order,
+                    product=product,
+                    quantity=quantity,
+                    remaining_quantity=quantity,
+                    expiration_date=expiration_date,
+                    purchase_price=purchase_price,
+                    sale_price=sale_price,
+                    batch_number=f'IMPORT-{barcode}',
+                )
+
+                # Créer le mouvement de stock
+                StockMovement.objects.create(
+                    lot=lot,
+                    movement_type=StockMovement.MovementType.IN,
+                    quantity=quantity,
+                    source='Initial import',
+                    comment='Initial stock from parsed feed',
+                )
+
+        return 'created' if product_created else 'updated'
 
     @staticmethod
     def _decimal_or_default(value: Optional[str]) -> Decimal:
