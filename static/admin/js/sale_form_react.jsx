@@ -30,6 +30,10 @@
   function SaleForm() {
     const [customerId, setCustomerId] = React.useState(null);
     const [customers, setCustomers] = React.useState([]);
+    const [isAnonymousCustomer, setIsAnonymousCustomer] = React.useState(false);
+    const [anonymousCustomerName, setAnonymousCustomerName] = React.useState('');
+    const [anonymousCustomerPhone, setAnonymousCustomerPhone] = React.useState('');
+    const [anonymousCustomerEmail, setAnonymousCustomerEmail] = React.useState('');
     const [saleDate, setSaleDate] = React.useState(new Date().toISOString().slice(0, 16));
     const [notes, setNotes] = React.useState('');
     const [taxAmount, setTaxAmount] = React.useState('0.00');
@@ -73,7 +77,17 @@
             
             if (saleData.sale_id) {
               // Remplir le formulaire avec les données existantes
-              setCustomerId(saleData.customer_id);
+              // Gérer le client anonyme si nécessaire
+              if (saleData.customer_is_anonymous && saleData.anonymous_customer) {
+                setIsAnonymousCustomer(true);
+                setAnonymousCustomerName(saleData.anonymous_customer.name || '');
+                setAnonymousCustomerPhone(saleData.anonymous_customer.phone || '');
+                setAnonymousCustomerEmail(saleData.anonymous_customer.email || '');
+                setCustomerId(null);
+              } else {
+                setCustomerId(saleData.customer_id);
+                setIsAnonymousCustomer(false);
+              }
               if (saleData.sale_date) {
                 const date = new Date(saleData.sale_date);
                 setSaleDate(date.toISOString().slice(0, 16));
@@ -95,11 +109,18 @@
               
               // Charger les paiements
               const loadedPayments = saleData.payments.map(payment => ({
+                id: payment.id, // ID pour la mise à jour
                 amount: payment.amount,
                 paymentMethod: payment.payment_method,
               }));
               setPayments(loadedPayments);
+            } else {
+              // Pour une nouvelle vente, initialiser avec un paiement vide
+              setPayments([{ amount: '', paymentMethod: 'cash' }]);
             }
+          } else {
+            // Pour une nouvelle vente, initialiser avec un paiement vide
+            setPayments([{ amount: '', paymentMethod: 'cash' }]);
           }
         } catch (error) {
           console.error('Erreur lors du chargement des données:', error);
@@ -272,6 +293,10 @@
 
     // Supprimer un paiement
     const removePayment = (index) => {
+      // Pour les nouvelles ventes, ne pas permettre de supprimer le seul paiement
+      if (isNewSale && payments.length === 1) {
+        return;
+      }
       setPayments(payments.filter((_, i) => i !== index));
     };
 
@@ -285,8 +310,12 @@
       // Validation
       const validationErrors = {};
       
-      if (!customerId) {
+      if (!isAnonymousCustomer && !customerId) {
         validationErrors.customer = 'Le client est requis';
+      }
+      
+      if (isAnonymousCustomer && !anonymousCustomerName.trim()) {
+        validationErrors.anonymous_customer_name = 'Le nom du client anonyme est requis';
       }
       
       if (items.length === 0) {
@@ -313,7 +342,7 @@
 
       // Préparer les données
       const saleData = {
-        customer_id: customerId,
+        customer_id: isAnonymousCustomer ? null : customerId,
         sale_date: saleDate,
         tax_amount: taxAmount || '0.00',
         discount_amount: discountAmount || '0.00',
@@ -323,10 +352,20 @@
           quantity: item.quantity,
         })),
         payments: payments.map(payment => ({
+          id: payment.id || null, // ID pour la mise à jour (null si nouveau paiement)
           amount: payment.amount,
           payment_method: payment.paymentMethod,
         })),
       };
+      
+      // Ajouter les informations du client anonyme si nécessaire
+      if (isAnonymousCustomer) {
+        saleData.anonymous_customer = {
+          name: anonymousCustomerName.trim(),
+          phone: anonymousCustomerPhone.trim() || null,
+          email: anonymousCustomerEmail.trim() || null,
+        };
+      }
 
       try {
         let response;
@@ -370,7 +409,7 @@
         setTimeout(() => {
           // Recharger la page pour voir les modifications
           if (isNewSale) {
-            window.location.href = `/admin/sales/sale/${data.sale_id}/change/`;
+            window.location.href = `/admin/sales/sale/`;
           } else {
             window.location.reload();
           }
@@ -399,20 +438,60 @@
           {/* En-tête */}
           <div className="sale-header">
             <div className="form-group">
-              <label>Client *</label>
-              <select
-                value={customerId || ''}
-                onChange={(e) => setCustomerId(e.target.value ? parseInt(e.target.value) : null)}
-                className={errors.customer ? 'error' : ''}
-              >
-                <option value="">Sélectionner un client</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}{customer.credit_balance > 0 ? ` (Crédit: ${customer.credit_balance} GNF)` : ''}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <label style={{ margin: 0 }}>Client *</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', margin: 0, fontWeight: 'normal' }}>
+                  <input
+                    type="checkbox"
+                    checked={isAnonymousCustomer}
+                    onChange={(e) => {
+                      setIsAnonymousCustomer(e.target.checked);
+                      if (e.target.checked) {
+                        setCustomerId(null);
+                      }
+                    }}
+                  />
+                  <span>Client anonyme</span>
+                </label>
+              </div>
+              {!isAnonymousCustomer ? (
+                <select
+                  value={customerId || ''}
+                  onChange={(e) => setCustomerId(e.target.value ? parseInt(e.target.value) : null)}
+                  className={errors.customer ? 'error' : ''}
+                >
+                  <option value="">Sélectionner un client</option>
+                  {customers.map(customer => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}{customer.credit_balance > 0 ? ` (Crédit: ${customer.credit_balance} FCFA)` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="Nom du client *"
+                    value={anonymousCustomerName}
+                    onChange={(e) => setAnonymousCustomerName(e.target.value)}
+                    className={errors.anonymous_customer_name ? 'error' : ''}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Téléphone (optionnel)"
+                    value={anonymousCustomerPhone}
+                    onChange={(e) => setAnonymousCustomerPhone(e.target.value)}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email (optionnel)"
+                    value={anonymousCustomerEmail}
+                    onChange={(e) => setAnonymousCustomerEmail(e.target.value)}
+                  />
+                </div>
+              )}
               {errors.customer && <span className="error-message">{errors.customer}</span>}
+              {errors.anonymous_customer_name && <span className="error-message">{errors.anonymous_customer_name}</span>}
             </div>
             <div className="form-group">
               <label>Date de vente</label>
@@ -539,13 +618,16 @@
           <div className="payments-section">
             <h3>Paiements</h3>
             {errors.payments && <div className="error-message">{errors.payments}</div>}
-            <button
-              type="button"
-              onClick={addPayment}
-              className="btn-add"
-            >
-              + Ajouter un paiement
-            </button>
+            {/* Afficher le bouton seulement pour les modifications */}
+            {!isNewSale && (
+              <button
+                type="button"
+                onClick={addPayment}
+                className="btn-add"
+              >
+                + Ajouter un paiement
+              </button>
+            )}
             {payments.map((payment, index) => (
               <div key={index} className="payment-row">
                 <input
@@ -567,13 +649,16 @@
                   <option value="bank_transfer">Virement bancaire</option>
                   <option value="other">Autre</option>
                 </select>
-                <button
-                  type="button"
-                  onClick={() => removePayment(index)}
-                  className="btn-remove"
-                >
-                  Supprimer
-                </button>
+                {/* Cacher le bouton supprimer pour le premier paiement dans les nouvelles ventes */}
+                {!(isNewSale && index === 0 && payments.length === 1) && (
+                  <button
+                    type="button"
+                    onClick={() => removePayment(index)}
+                    className="btn-remove"
+                  >
+                    Supprimer
+                  </button>
+                )}
                 {errors[`payments.${index}.amount`] && (
                   <span className="error-message">{errors[`payments.${index}.amount`]}</span>
                 )}
@@ -598,7 +683,9 @@
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-            />
+            >
+                Fournissez des informations supplémentaires sur la vente ou le client...
+            </textarea>
           </div>
 
           {/* Messages d'erreur généraux */}
@@ -608,7 +695,14 @@
 
           {/* Message de succès */}
           {submitSuccess && (
-            <div className="success-message">Vente créée avec succès ! Redirection...</div>
+           <>
+           {isNewSale ? (
+               <div className="success-message">Vente créée avec succès ! Redirection...</div>
+           ) : (
+               <div className="success-message">Vente modifiée avec succès ! Redirection...</div>
+           )}
+           
+           </>
           )}
 
           {/* Bouton de soumission */}

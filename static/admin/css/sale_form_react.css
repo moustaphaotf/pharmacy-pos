@@ -155,6 +155,7 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
+  height: 100%;
 }
 
 .btn-remove:hover {
@@ -209,7 +210,7 @@
 }
 
 .btn-add {
-  background: #28a745;
+  background: #262a27;
   color: #fff;
   border: none;
   padding: 10px 20px;
@@ -222,7 +223,7 @@
 }
 
 .btn-add:hover {
-  background: #218838;
+  background: #272b28;
 }
 
 .payment-row {

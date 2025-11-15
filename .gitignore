@@ -15,7 +15,7 @@ env/
 *.sqlite3
 media/
 staticfiles/
-
+static/js/
 .env*
 
 

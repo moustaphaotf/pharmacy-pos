@@ -20,6 +20,11 @@ class Customer(TimeStampedModel):
         decimal_places=2,
         default=Decimal('0.00'),
     )
+    is_anonymous = models.BooleanField(
+        'Client anonyme',
+        default=False,
+        help_text='Les clients anonymes ne sont pas listés par défaut dans les formulaires et listes',
+    )
 
     class Meta:
         verbose_name = 'Client'

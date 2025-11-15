@@ -144,8 +144,8 @@ class Sale(TimeStampedModel):
         self.discount_amount = self.discount_amount or Decimal('0.00')
         self.amount_paid = self.amount_paid or Decimal('0.00')
         # Le subtotal est déjà calculé après remise dans update_totals_from_items
-        # Sinon, on recalcule ici
-        if not hasattr(self, '_totals_updated'):
+        # Sinon, on recalcule ici (seulement si la vente existe déjà en base)
+        if not hasattr(self, '_totals_updated') and self.pk:
             items_subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
             self.subtotal = items_subtotal - self.discount_amount
         self.total_amount = self.subtotal + self.tax_amount

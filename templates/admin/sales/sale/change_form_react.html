@@ -28,12 +28,12 @@
 {% block extrahead %}
 {{ block.super }}
 <!-- React et ReactDOM via CDN -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<!-- Babel Standalone pour transformer le JSX -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script async defer src="{% static 'js/react.production.min.js' %}"></script>
+<script async defer src="{% static 'js/react-dom.production.min.js' %}"></script>
 
-<script>
+<!-- Babel Standalone pour transformer le JSX -->
+<script async defer src="{% static 'js/babel.min.js' %}"></script>
+<script async defer>
     // Variables globales pour React
     window.SALE_FORM_CONFIG = {
         apiBaseUrl: '/api/sales/',
@@ -45,7 +45,7 @@
     console.log('🔵 Template React chargé');
     console.log('🔵 SALE_FORM_CONFIG:', window.SALE_FORM_CONFIG);
 </script>
-<script type="text/babel" src="{% static 'admin/js/sale_form_react.jsx' %}"></script>
+<script async defer type="text/babel" src="{% static 'admin/js/sale_form_react.jsx' %}"></script>
 
 <script>
   // Debug final

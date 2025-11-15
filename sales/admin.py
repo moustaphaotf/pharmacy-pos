@@ -17,8 +17,20 @@ class CustomerResource(resources.ModelResource):
 @admin.register(Customer)
 class CustomerAdmin(ImportExportModelAdmin):
     resource_class = CustomerResource
-    list_display = ('name', 'email', 'phone', 'credit_balance')
+    list_display = ('name', 'email', 'phone', 'credit_balance', 'is_anonymous')
+    list_filter = ('is_anonymous',)
     search_fields = ('name', 'email', 'phone')
+    
+    def get_queryset(self, request):
+        """
+        Par défaut, exclure les clients anonymes de la liste.
+        Les admins peuvent les voir en utilisant le filtre is_anonymous.
+        """
+        qs = super().get_queryset(request)
+        # Si le filtre is_anonymous n'est pas activé, exclure les anonymes
+        if 'is_anonymous__exact' not in request.GET:
+            qs = qs.filter(is_anonymous=False)
+        return qs
 
 
 class SaleItemLotInline(admin.TabularInline):

@@ -260,13 +260,28 @@ def sale_detail(request, sale_id):
     payments = []
     for payment in sale.payments.all():
         payments.append({
+            'id': payment.id,
             'amount': str(payment.amount),
             'payment_method': payment.payment_method,
         })
     
+    # Vérifier si le client est anonyme
+    customer_is_anonymous = False
+    anonymous_customer_info = None
+    if sale.customer:
+        customer_is_anonymous = sale.customer.is_anonymous
+        if customer_is_anonymous:
+            anonymous_customer_info = {
+                'name': sale.customer.name,
+                'phone': sale.customer.phone or '',
+                'email': sale.customer.email or '',
+            }
+    
     return JsonResponse({
         'sale_id': sale.id,
         'customer_id': sale.customer_id,
+        'customer_is_anonymous': customer_is_anonymous,
+        'anonymous_customer': anonymous_customer_info,
         'sale_date': sale.sale_date.isoformat() if sale.sale_date else None,
         'notes': sale.notes or '',
         'tax_amount': str(sale.tax_amount),
@@ -305,7 +320,12 @@ def create_sale(request):
                 "amount": "100.00",
                 "payment_method": "cash"
             }
-        ]
+        ],
+        "anonymous_customer": {
+            "name": "Client Passager",
+            "phone": "123456789",
+            "email": "client@example.com"
+        }
     }
     """
     if not request.user.is_authenticated:
@@ -320,13 +340,53 @@ def create_sale(request):
     
     # Validation des données de base
     customer_id = data.get('customer_id')
-    if customer_id:
+    anonymous_customer_data = data.get('anonymous_customer')
+    
+    # Gérer le client anonyme ou le client existant
+    customer = None
+    if anonymous_customer_data:
+        # Créer un client anonyme
+        if not anonymous_customer_data.get('name') or not anonymous_customer_data.get('name').strip():
+            errors['anonymous_customer'] = 'Le nom du client anonyme est requis'
+        else:
+            # Vérifier si un client avec le même nom/téléphone existe déjà
+            name = anonymous_customer_data.get('name', '').strip()
+            phone = anonymous_customer_data.get('phone') or ''
+            phone = phone.strip() if phone else ''  # Utiliser '' au lieu de None car phone n'a pas null=True
+            email = anonymous_customer_data.get('email') or ''
+            email = email.strip() if email else ''  # Utiliser '' au lieu de None car email n'a pas null=True
+            
+            # Chercher un client anonyme existant avec le même nom et téléphone
+            existing_customer = Customer.objects.filter(
+                name=name,
+                is_anonymous=True
+            )
+            if phone:
+                existing_customer = existing_customer.filter(phone=phone)
+            else:
+                existing_customer = existing_customer.filter(phone='')  # Utiliser '' au lieu de phone__isnull=True
+            
+            existing_customer = existing_customer.first()
+            
+            if existing_customer:
+                # Utiliser le client anonyme existant
+                customer = existing_customer
+            else:
+                # Créer un nouveau client anonyme
+                customer = Customer.objects.create(
+                    name=name,
+                    phone=phone,
+                    email=email,
+                    is_anonymous=True,
+                )
+    elif customer_id:
         try:
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
             errors['customer_id'] = 'Client non trouvé'
-    else:
-        customer = None
+    
+    if not customer and not anonymous_customer_data and not customer_id:
+        errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
     discount_amount = Decimal(str(data.get('discount_amount', '0.00')))
@@ -479,9 +539,14 @@ def create_sale(request):
                 for lot_info in item_data['lots']:
                     lot = lot_info['lot']
                     qty = lot_info['quantity']
-                    lot.adjust_stock(
-                        quantity_delta=-qty,
-                        movement_type='out',
+                    lot.adjust_quantity(quantity_delta=-qty)
+                    
+                    # Créer le mouvement de stock
+                    from catalog.models import StockMovement
+                    StockMovement.objects.create(
+                        lot=lot,
+                        movement_type=StockMovement.MovementType.OUT,
+                        quantity=qty,
                         source=f'Sale #{sale.id}',
                         comment=f'Vente - Item #{sale_item.id}',
                     )
@@ -552,13 +617,53 @@ def update_sale(request, sale_id):
     
     # Validation des données de base
     customer_id = data.get('customer_id')
-    if customer_id:
+    anonymous_customer_data = data.get('anonymous_customer')
+    
+    # Gérer le client anonyme ou le client existant (même logique que create_sale)
+    customer = None
+    if anonymous_customer_data:
+        # Créer un client anonyme
+        if not anonymous_customer_data.get('name') or not anonymous_customer_data.get('name').strip():
+            errors['anonymous_customer'] = 'Le nom du client anonyme est requis'
+        else:
+            # Vérifier si un client avec le même nom/téléphone existe déjà
+            name = anonymous_customer_data.get('name', '').strip()
+            phone = anonymous_customer_data.get('phone') or ''
+            phone = phone.strip() if phone else ''  # Utiliser '' au lieu de None car phone n'a pas null=True
+            email = anonymous_customer_data.get('email') or ''
+            email = email.strip() if email else ''  # Utiliser '' au lieu de None car email n'a pas null=True
+            
+            # Chercher un client anonyme existant avec le même nom et téléphone
+            existing_customer = Customer.objects.filter(
+                name=name,
+                is_anonymous=True
+            )
+            if phone:
+                existing_customer = existing_customer.filter(phone=phone)
+            else:
+                existing_customer = existing_customer.filter(phone='')  # Utiliser '' au lieu de phone__isnull=True
+            
+            existing_customer = existing_customer.first()
+            
+            if existing_customer:
+                # Utiliser le client anonyme existant
+                customer = existing_customer
+            else:
+                # Créer un nouveau client anonyme
+                customer = Customer.objects.create(
+                    name=name,
+                    phone=phone,
+                    email=email,
+                    is_anonymous=True,
+                )
+    elif customer_id:
         try:
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
             errors['customer_id'] = 'Client non trouvé'
-    else:
-        customer = None
+    
+    if not customer and not anonymous_customer_data and not customer_id:
+        errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
     discount_amount = Decimal(str(data.get('discount_amount', '0.00')))
@@ -665,6 +770,7 @@ def update_sale(request, sale_id):
             errors[f'payments.{idx}'] = payment_errors
         else:
             validated_payments.append({
+                'id': payment_data.get('id'),  # ID optionnel pour la mise à jour
                 'amount': amount,
                 'payment_method': payment_method,
             })
@@ -682,18 +788,23 @@ def update_sale(request, sale_id):
             # Restaurer les stocks des items existants
             for existing_item in sale.items.all():
                 # Récupérer les SaleItemLot pour restaurer les stocks
-                for sale_item_lot in existing_item.lots_used.all():
+                # Le related_name est 'lot_items', pas 'lots_used'
+                for sale_item_lot in existing_item.lot_items.all():
                     lot = sale_item_lot.lot
-                    lot.adjust_stock(
-                        quantity_delta=sale_item_lot.quantity,
-                        movement_type='in',
+                    lot.adjust_quantity(quantity_delta=sale_item_lot.quantity)
+                    
+                    # Créer le mouvement de stock
+                    from catalog.models import StockMovement
+                    StockMovement.objects.create(
+                        lot=lot,
+                        movement_type=StockMovement.MovementType.IN,
+                        quantity=sale_item_lot.quantity,
                         source=f'Sale #{sale.id}',
                         comment=f'Annulation vente - Item #{existing_item.id}',
                     )
             
-            # Supprimer les anciens items et paiements
+            # Supprimer les anciens items (les paiements seront mis à jour, pas supprimés)
             sale.items.all().delete()
-            sale.payments.all().delete()
             
             # Calculer le sous-total
             subtotal = sum(item['line_total'] for item in validated_items)
@@ -735,22 +846,53 @@ def update_sale(request, sale_id):
                 for lot_info in item_data['lots']:
                     lot = lot_info['lot']
                     qty = lot_info['quantity']
-                    lot.adjust_stock(
-                        quantity_delta=-qty,
-                        movement_type='out',
+                    lot.adjust_quantity(quantity_delta=-qty)
+                    
+                    # Créer le mouvement de stock
+                    from catalog.models import StockMovement
+                    StockMovement.objects.create(
+                        lot=lot,
+                        movement_type=StockMovement.MovementType.OUT,
+                        quantity=qty,
                         source=f'Sale #{sale.id}',
                         comment=f'Vente - Item #{sale_item.id}',
                     )
             
-            # Créer les nouveaux paiements
+            # Gérer les paiements en préservant l'horodatage
+            # Récupérer tous les paiements existants indexés par ID
+            existing_payments_dict = {p.id: p for p in sale.payments.all()}
+            payment_ids_to_keep = set()
             total_paid = Decimal('0.00')
+            
+            # Mettre à jour ou créer les paiements
             for payment_data in validated_payments:
-                Payment.objects.create(
-                    sale=sale,
-                    amount=payment_data['amount'],
-                    payment_method=payment_data['payment_method'],
-                )
-                total_paid += payment_data['amount']
+                amount = payment_data['amount']
+                payment_method = payment_data['payment_method']
+                payment_id = payment_data.get('id')
+                
+                if payment_id and payment_id in existing_payments_dict:
+                    # Mettre à jour le paiement existant (préserve created_at et payment_date)
+                    existing_payment = existing_payments_dict[payment_id]
+                    existing_payment.amount = amount
+                    existing_payment.payment_method = payment_method
+                    # Ne pas modifier payment_date ni created_at
+                    existing_payment.save(update_fields=['amount', 'payment_method', 'updated_at'])
+                    payment_ids_to_keep.add(payment_id)
+                    total_paid += amount
+                else:
+                    # Créer un nouveau paiement
+                    new_payment = Payment.objects.create(
+                        sale=sale,
+                        amount=amount,
+                        payment_method=payment_method,
+                    )
+                    payment_ids_to_keep.add(new_payment.id)
+                    total_paid += amount
+            
+            # Supprimer les paiements qui ne sont plus dans la liste
+            for payment_id, payment in existing_payments_dict.items():
+                if payment_id not in payment_ids_to_keep:
+                    payment.delete()
             
             # Mettre à jour les totaux de la vente
             sale.amount_paid = total_paid
@@ -789,8 +931,15 @@ def update_sale(request, sale_id):
 def customer_list(request):
     """
     Liste des clients pour le select.
+    Exclut les clients anonymes par défaut.
     """
-    customers = Customer.objects.all().order_by('name')[:100]
+    # Exclure les clients anonymes de la liste déroulante
+    # Utiliser .only() pour ne charger que les champs nécessaires
+    customers = Customer.objects.filter(
+        is_anonymous=False
+    ).only(
+        'id', 'name', 'phone', 'email', 'credit_balance'
+    ).order_by('name')[:100]
     
     results = []
     for customer in customers:
