@@ -79,12 +79,12 @@ class SaleResource(resources.ModelResource):
 @admin.register(Sale)
 class SaleAdmin(ImportExportModelAdmin):
     resource_class = SaleResource
-    list_display = ('id', 'sale_date', 'customer', 'get_discount_display', 'total_amount', 'amount_paid', 'balance_due', 'status')
+    list_display = ('reference', 'sale_date', 'customer', 'get_discount_display', 'total_amount', 'amount_paid', 'balance_due', 'status')
     list_filter = ('status', 'sale_date')
-    search_fields = ('id', 'customer__name', 'user__username')
-    readonly_fields = ('user', 'subtotal', 'get_discount_display', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
+    search_fields = ('reference', 'id', 'customer__name', 'user__username')
+    readonly_fields = ('reference', 'user', 'subtotal', 'get_discount_display', 'total_amount', 'amount_paid', 'balance_due', 'created_at', 'updated_at')
     fieldsets = (
-        (_('Général'), {'fields': ('customer', 'sale_date', 'notes')}),
+        (_('Général'), {'fields': ('reference', 'customer', 'sale_date', 'notes')}),
         (_('Finances'), {'fields': ('subtotal', 'discount_type', 'discount_value', 'get_discount_display', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due')}),
         (_('Métadonnées'), {'fields': ('user', 'status', 'created_at', 'updated_at')}),
     )

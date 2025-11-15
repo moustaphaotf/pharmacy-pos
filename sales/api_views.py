@@ -279,6 +279,7 @@ def sale_detail(request, sale_id):
     
     return JsonResponse({
         'sale_id': sale.id,
+        'reference': sale.reference,
         'customer_id': sale.customer_id,
         'customer_is_anonymous': customer_is_anonymous,
         'anonymous_customer': anonymous_customer_info,

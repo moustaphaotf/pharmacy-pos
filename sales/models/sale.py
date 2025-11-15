@@ -2,6 +2,7 @@
 Modèle pour les ventes.
 """
 
+import uuid
 from decimal import Decimal
 from typing import Optional
 
@@ -21,6 +22,14 @@ class Sale(TimeStampedModel):
         PAID = 'paid', 'Payée'
         PARTIAL = 'partial', 'Partielle'
 
+    reference = models.CharField(
+        'Référence',
+        max_length=100,
+        unique=True,
+        blank=True,
+        null=True,
+        help_text='Référence unique de la vente',
+    )
     customer = models.ForeignKey(
         Customer,
         related_name='sales',
@@ -107,7 +116,17 @@ class Sale(TimeStampedModel):
         ordering = ['-sale_date']
 
     def __str__(self) -> str:
-        return f'Vente #{self.pk or "—"}'
+        return self.reference or f'Vente #{self.pk or "—"}'
+
+    @staticmethod
+    def generate_reference() -> str:
+        """
+        Génère une référence unique pour la vente.
+        Format: SALE-YYYYMMDD-HHMMSS-XXXXXX
+        """
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        random_suffix = uuid.uuid4().hex[:6].upper()
+        return f'SALE-{timestamp}-{random_suffix}'
 
     def get_discount_display(self) -> str:
         """
@@ -182,18 +201,23 @@ class Sale(TimeStampedModel):
         customer.save(update_fields=['credit_balance', 'updated_at'])
 
     def save(self, *args, **kwargs) -> None:
+        # Générer la référence si elle n'existe pas
+        if not self.reference:
+            self.reference = self.generate_reference()
+        
         previous_customer_id: Optional[int] = None
         if self.pk:
             previous_customer_id = Sale.objects.only('customer_id').get(pk=self.pk).customer_id
         self.subtotal = self.subtotal or Decimal('0.00')
         self.tax_amount = self.tax_amount or Decimal('0.00')
-        self.discount_amount = self.discount_amount or Decimal('0.00')
+        self.discount_value = self.discount_value or Decimal('0.00')
         self.amount_paid = self.amount_paid or Decimal('0.00')
         # Le subtotal est déjà calculé après remise dans update_totals_from_items
         # Sinon, on recalcule ici (seulement si la vente existe déjà en base)
         if not hasattr(self, '_totals_updated') and self.pk:
             items_subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
-            self.subtotal = items_subtotal - self.discount_amount
+            discount_amount = self.calculate_discount_amount(items_subtotal)
+            self.subtotal = items_subtotal - discount_amount
         self.total_amount = self.subtotal + self.tax_amount
         self.balance_due = self.total_amount - self.amount_paid
         self.status = self.compute_status()
