@@ -1,0 +1,479 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static jazzmin %}
+{% get_jazzmin_ui_tweaks as jazzmin_ui %}
+
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block content_title %} {% trans 'Dashboard' %} {% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 4px solid #667eea;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .stat-card.primary { border-left-color: #667eea; }
+        .stat-card.success { border-left-color: #10b981; }
+        .stat-card.warning { border-left-color: #f59e0b; }
+        .stat-card.info { border-left-color: #3b82f6; }
+        .stat-icon {
+            font-size: 2.5rem;
+            opacity: 0.8;
+        }
+        .stat-value {
+            /* font-size: 1.5rem; */
+            font-weight: bold;
+            margin: 0.5rem 0;
+        }
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .chart-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .top-products-table {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .table {
+            margin-bottom: 0;
+        }
+        .badge-revenue {
+            background-color: #10b981;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: 500;
+        }
+    </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+        <li class="breadcrumb-item">{% trans 'Dashboard' %}</li>
+    </ol>
+{% endblock %}
+
+
+{% block content %}
+<div class="content-main">
+    <div class="container-fluid">
+        <!-- Stat Cards -->
+        <div class="row" id="statCards">
+            <div class="loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Chargement...</span>
+                </div>
+                <p class="mt-2">Chargement des statistiques...</p>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="chart-container">
+                    <h3 class="chart-title">
+                        <i class="bi bi-bar-chart-fill"></i> Ventes Journalières (30 derniers jours)
+                    </h3>
+                    <canvas id="dailyChart"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="chart-container">
+                    <h3 class="chart-title">
+                        <i class="bi bi-pie-chart-fill"></i> Statistiques du Jour
+                    </h3>
+                    <canvas id="todayPieChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="chart-container">
+                    <h3 class="chart-title">
+                        <i class="bi bi-graph-up"></i> Ventes Mensuelles (12 derniers mois)
+                    </h3>
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Products -->
+        {% if user.role == 'admin' or user.role == 'pharmacist' %}
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="top-products-table">
+                    <h3 class="chart-title">
+                        <i class="bi bi-star-fill"></i> Top 10 Produits du Mois
+                    </h3>
+                    <div id="topProducts">
+                        <div class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Chargement...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Variables globales pour les graphiques
+    let dailyChart = null;
+    let todayPieChart = null;
+    let monthlyChart = null;
+
+    // Données de permissions depuis le template
+    const userRole = '{{ user.role }}';
+    const canViewFinancial = userRole === 'admin';
+    const canViewProducts = userRole === 'admin' || userRole === 'pharmacist';
+
+    // Fonction pour formater les montants
+    function formatAmount(value) {
+        return new Intl.NumberFormat('fr-FR', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(parseFloat(value));
+    }
+
+    // Fonction pour charger les statistiques
+    async function loadStats() {
+        try {
+            const response = await fetch('/api/sales/dashboard/stats/');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Erreur lors du chargement des statistiques');
+            }
+            const data = await response.json();
+
+            // Afficher les stat cards
+            displayStatCards(data);
+
+            // Créer les graphiques
+            createDailyChart(data.daily_sales);
+            createTodayPieChart(data.today);
+            createMonthlyChart(data.monthly_sales);
+
+            // Afficher les top produits
+            if (canViewProducts) {
+                displayTopProducts(data.top_products);
+            }
+
+        } catch (error) {
+            console.error('Erreur:', error);
+            document.getElementById('statCards').innerHTML = 
+                '<div class="alert alert-danger">Erreur lors du chargement des statistiques: ' + error.message + '</div>';
+        }
+    }
+
+    // Afficher les stat cards
+    function displayStatCards(data) {
+        const stats = [
+            {
+                icon: 'bi-calendar-day',
+                label: 'Ventes Aujourd\'hui',
+                value: data.today.count,
+                suffix: ' ventes',
+                color: 'primary'
+            },
+            {
+                icon: 'bi-currency-exchange',
+                label: 'Montant Aujourd\'hui',
+                value: canViewFinancial ? formatAmount(data.today.total_amount) : '***',
+                suffix: ' GNF',
+                color: 'success'
+            },
+            {
+                icon: 'bi-calendar-month',
+                label: 'Ventes ce Mois',
+                value: data.month.count,
+                suffix: ' ventes',
+                color: 'warning'
+            },
+            {
+                icon: 'bi-cash-coin',
+                label: 'Montant ce Mois',
+                value: canViewFinancial ? formatAmount(data.month.total_amount) : '***',
+                suffix: ' GNF',
+                color: 'info'
+            }
+        ];
+
+        let html = '';
+        stats.forEach(stat => {
+            html += `
+                <div class="col-md-6 col-lg-3">
+                    <div class="stat-card ${stat.color}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="stat-label">${stat.label}</div>
+                                <div class="stat-value">${stat.value}</div>
+                                <small class="text-muted">${stat.suffix}</small>
+                            </div>
+                            <i class="bi ${stat.icon} stat-icon text-${stat.color}"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('statCards').innerHTML = html;
+    }
+
+    // Créer le graphique des ventes journalières
+    function createDailyChart(dailyData) {
+        const ctx = document.getElementById('dailyChart').getContext('2d');
+        
+        const labels = dailyData.map(d => {
+            const date = new Date(d.date);
+            return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        });
+        
+        const totalData = dailyData.map(d => parseFloat(d.total));
+        const paidData = dailyData.map(d => parseFloat(d.paid));
+
+        if (dailyChart) {
+            dailyChart.destroy();
+        }
+
+        dailyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Montant Total',
+                        data: canViewFinancial ? totalData : totalData.map(() => 0),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Montant Payé',
+                        data: canViewFinancial ? paidData : paidData.map(() => 0),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (!canViewFinancial && context.datasetIndex === 0) {
+                                    return 'Données masquées';
+                                }
+                                return context.dataset.label + ': ' + formatAmount(context.parsed.y) + ' GNF';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (!canViewFinancial) return '***';
+                                return formatAmount(value) + ' GNF';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Créer le graphique en secteurs pour aujourd'hui
+    function createTodayPieChart(todayData) {
+        const ctx = document.getElementById('todayPieChart').getContext('2d');
+        
+        const paid = parseFloat(todayData.amount_paid);
+        const total = parseFloat(todayData.total_amount);
+        const remaining = total - paid;
+
+        if (todayPieChart) {
+            todayPieChart.destroy();
+        }
+
+        const displayData = canViewFinancial ? [paid, remaining] : [0, 0];
+
+        todayPieChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Payé', 'Restant'],
+                datasets: [{
+                    data: displayData,
+                    backgroundColor: [
+                        '#10b981',
+                        '#f59e0b'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (!canViewFinancial) return 'Données masquées';
+                                const label = context.label || '';
+                                const value = formatAmount(context.parsed);
+                                return label + ': ' + value + ' GNF';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Créer le graphique des ventes mensuelles
+    function createMonthlyChart(monthlyData) {
+        const ctx = document.getElementById('monthlyChart').getContext('2d');
+        
+        const labels = monthlyData.map(m => m.label);
+        const totalData = monthlyData.map(m => parseFloat(m.total));
+        const paidData = monthlyData.map(m => parseFloat(m.paid));
+
+        if (monthlyChart) {
+            monthlyChart.destroy();
+        }
+
+        monthlyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Montant Total',
+                        data: canViewFinancial ? totalData : totalData.map(() => 0),
+                        backgroundColor: '#667eea',
+                        borderRadius: 5
+                    },
+                    {
+                        label: 'Montant Payé',
+                        data: canViewFinancial ? paidData : paidData.map(() => 0),
+                        backgroundColor: '#10b981',
+                        borderRadius: 5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (!canViewFinancial) return 'Données masquées';
+                                return context.dataset.label + ': ' + formatAmount(context.parsed.y) + ' GNF';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (!canViewFinancial) return '***';
+                                return formatAmount(value) + ' GNF';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Afficher les top produits
+    function displayTopProducts(products) {
+        if (!products || products.length === 0) {
+            document.getElementById('topProducts').innerHTML = 
+                '<p class="text-muted">Aucun produit vendu ce mois-ci.</p>';
+            return;
+        }
+
+        let html = '<table class="table table-hover">';
+        html += '<thead><tr><th>#</th><th>Produit</th><th>Quantité</th><th>Revenus</th></tr></thead><tbody>';
+        
+        products.forEach((product, index) => {
+            html += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${product.name}</td>
+                    <td><span class="badge bg-primary">${product.quantity}</span></td>
+                    <td><span class="badge-revenue">${canViewFinancial ? formatAmount(product.revenue) + ' GNF' : '***'}</span></td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table>';
+        document.getElementById('topProducts').innerHTML = html;
+    }
+
+    // Charger les statistiques au chargement de la page
+    document.addEventListener('DOMContentLoaded', loadStats);
+</script>
+{% endblock %}
+

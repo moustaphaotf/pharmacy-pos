@@ -4,10 +4,9 @@ Vues pour la génération de factures.
 
 from django.conf import settings
 from django.http import HttpResponse, Http404
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.utils import timezone
-
 from xhtml2pdf import pisa
 from io import BytesIO
 

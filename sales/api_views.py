@@ -4,14 +4,17 @@ API Views pour le formulaire de vente dynamique.
 
 import json
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Count, DateField
+from django.db.models.functions import TruncDate
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from catalog.models import Product, Lot
 from .models import Customer, Sale, SaleItem, Payment
@@ -1013,4 +1016,169 @@ def generate_invoice(request, sale_id):
         return JsonResponse({
             'success': False,
             'error': f'Erreur lors de la génération de la facture: {str(e)}',
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def dashboard_stats(request):
+    """
+    API pour récupérer les statistiques du dashboard.
+    Retourne les ventes journalières et mensuelles avec agrégations.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Non authentifié'}, status=401)
+    
+    # Vérifier les permissions basées sur le rôle
+    user_role = request.user.role
+    if user_role not in [User.Roles.ADMIN, User.Roles.PHARMACIST]:
+        return JsonResponse({'error': 'Accès non autorisé'}, status=403)
+    
+    try:
+        # Paramètres de date
+        today = timezone.now().date()
+        start_of_month = today.replace(day=1)
+        start_of_year = today.replace(month=1, day=1)
+        
+        # Statistiques du jour
+        today_sales = Sale.objects.filter(sale_date__date=today)
+        today_stats = {
+            'count': today_sales.count(),
+            'total_amount': str(today_sales.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')),
+            'amount_paid': str(today_sales.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0.00')),
+        }
+        
+        # Statistiques du mois
+        month_sales = Sale.objects.filter(sale_date__date__gte=start_of_month, sale_date__date__lte=today)
+        month_stats = {
+            'count': month_sales.count(),
+            'total_amount': str(month_sales.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')),
+            'amount_paid': str(month_sales.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0.00')),
+        }
+        
+        # Statistiques de l'année
+        year_sales = Sale.objects.filter(sale_date__date__gte=start_of_year, sale_date__date__lte=today)
+        year_stats = {
+            'count': year_sales.count(),
+            'total_amount': str(year_sales.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')),
+            'amount_paid': str(year_sales.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0.00')),
+        }
+        
+        # Ventes journalières des 30 derniers jours pour le graphique
+        thirty_days_ago = today - timedelta(days=30)
+        daily_sales = Sale.objects.filter(
+            sale_date__date__gte=thirty_days_ago,
+            sale_date__date__lte=today
+        ).annotate(
+            day=TruncDate('sale_date')
+        ).values('day').annotate(
+            count=Count('id'),
+            total=Sum('total_amount'),
+            paid=Sum('amount_paid')
+        ).order_by('day')
+        
+        # Créer un dictionnaire pour toutes les dates (y compris celles sans ventes)
+        daily_data_dict = {}
+        current_date = thirty_days_ago
+        while current_date <= today:
+            daily_data_dict[current_date] = {
+                'date': current_date.strftime('%Y-%m-%d'),
+                'count': 0,
+                'total': Decimal('0.00'),
+                'paid': Decimal('0.00'),
+            }
+            current_date += timedelta(days=1)
+        
+        # Mettre à jour avec les données réelles
+        for entry in daily_sales:
+            entry_date = entry['day']
+            if isinstance(entry_date, str):
+                entry_date = datetime.strptime(entry_date, '%Y-%m-%d').date()
+            daily_data_dict[entry_date] = {
+                'date': entry_date.strftime('%Y-%m-%d'),
+                'count': entry['count'],
+                'total': Decimal(str(entry['total'] or '0.00')),
+                'paid': Decimal(str(entry['paid'] or '0.00')),
+            }
+        
+        daily_data = [{'date': v['date'], 'count': v['count'], 'total': str(v['total']), 'paid': str(v['paid'])} for v in daily_data_dict.values()]
+        
+        # Ventes mensuelles des 12 derniers mois
+        monthly_data = []
+        for i in range(11, -1, -1):  # 12 derniers mois
+            # Calculer le mois exact
+            if today.month - i <= 0:
+                # Année précédente
+                year = today.year - 1
+                month = today.month - i + 12
+            else:
+                year = today.year
+                month = today.month - i
+            
+            month_start = date(year, month, 1)
+            # Calculer le dernier jour du mois
+            if month == 12:
+                month_end = date(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                month_end = date(year, month + 1, 1) - timedelta(days=1)
+            
+            # Ne pas dépasser aujourd'hui
+            if month_end > today:
+                month_end = today
+            
+            month_sales_data = Sale.objects.filter(
+                sale_date__date__gte=month_start,
+                sale_date__date__lte=month_end
+            ).aggregate(
+                count=Count('id'),
+                total=Sum('total_amount'),
+                paid=Sum('amount_paid')
+            )
+            
+            # Utiliser locale pour obtenir le nom du mois en français
+            from django.utils import formats
+            month_label = formats.date_format(month_start, 'F Y')
+            
+            monthly_data.append({
+                'month': month_start.strftime('%Y-%m'),
+                'label': month_label,
+                'count': month_sales_data['count'] or 0,
+                'total': str(month_sales_data['total'] or Decimal('0.00')),
+                'paid': str(month_sales_data['paid'] or Decimal('0.00')),
+            })
+        
+        # Top produits du mois
+        top_products = SaleItem.objects.filter(
+            sale__sale_date__date__gte=start_of_month,
+            sale__sale_date__date__lte=today
+        ).values('product__name').annotate(
+            total_quantity=Sum('quantity'),
+            total_revenue=Sum('line_total')
+        ).order_by('-total_quantity')[:10]
+        
+        top_products_data = [
+            {
+                'name': item['product__name'],
+                'quantity': item['total_quantity'],
+                'revenue': str(item['total_revenue'] or Decimal('0.00')),
+            }
+            for item in top_products
+        ]
+        
+        return JsonResponse({
+            'today': today_stats,
+            'month': month_stats,
+            'year': year_stats,
+            'daily_sales': daily_data,
+            'monthly_sales': monthly_data,
+            'top_products': top_products_data,
+        })
+    
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"Erreur dans dashboard_stats: {error_detail}")  # Pour le debug
+        return JsonResponse({
+            'error': f'Erreur lors de la récupération des statistiques: {str(e)}',
+            'detail': str(error_detail) if settings.DEBUG else None,
         }, status=500)

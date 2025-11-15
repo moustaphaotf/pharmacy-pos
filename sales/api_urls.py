@@ -18,5 +18,6 @@ urlpatterns = [
     path('<int:sale_id>/', api_views.sale_detail, name='sale_detail'),
     path('<int:sale_id>/update/', api_views.update_sale, name='update_sale'),
     path('<int:sale_id>/generate-invoice/', api_views.generate_invoice, name='generate_invoice'),
+    path('dashboard/stats/', api_views.dashboard_stats, name='dashboard_stats'),
 ]
 
