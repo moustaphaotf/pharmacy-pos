@@ -1,0 +1,59 @@
+{% extends "admin/change_form.html" %}
+{% load static i18n admin_urls admin_modify %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static 'admin/css/sale_form_react.css' %}">
+<style>
+  /* Masquer complètement le formulaire Django */
+  form#sale_form,
+  .inline-group,
+  .submit-row {
+    display: none !important;
+  }
+  
+  /* Afficher le container React */
+  #content-main {
+    display: block !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ block.super }}
+<!-- Container pour React (sera rempli par React) -->
+<div id="content-main"></div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<!-- React et ReactDOM via CDN -->
+<script async defer src="{% static 'js/react.production.min.js' %}"></script>
+<script async defer src="{% static 'js/react-dom.production.min.js' %}"></script>
+
+<!-- Babel Standalone pour transformer le JSX -->
+<script async defer src="{% static 'js/babel.min.js' %}"></script>
+<script async defer>
+    // Variables globales pour React
+    window.SALE_FORM_CONFIG = {
+        apiBaseUrl: '/api/sales/',
+        csrfToken: '{{ csrf_token }}',
+        saleId: {% if original %}{{ original.id }}{% else %}null{% endif %},
+        isNewSale: {% if original %}false{% else %}true{% endif %},
+    };
+    
+    console.log('🔵 Template React chargé');
+    console.log('🔵 SALE_FORM_CONFIG:', window.SALE_FORM_CONFIG);
+</script>
+<script async defer type="text/babel" src="{% static 'admin/js/sale_form_react.jsx' %}"></script>
+
+<script>
+  // Debug final
+  window.addEventListener('load', function() {
+    console.log('🟢 Page complètement chargée');
+    console.log('🟢 React:', typeof window.React !== 'undefined' ? '✅' : '❌');
+    console.log('🟢 ReactDOM:', typeof window.ReactDOM !== 'undefined' ? '✅' : '❌');
+    console.log('🟢 Container:', document.getElementById('content-main') ? '✅' : '❌');
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facture {{ invoice.invoice_number }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .invoice-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #333;
+        }
+        
+        .pharmacy-info {
+            flex: 1;
+        }
+        
+        .pharmacy-logo {
+            max-width: 150px;
+            max-height: 80px;
+            margin-bottom: 10px;
+        }
+        
+        .pharmacy-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .pharmacy-details {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .invoice-info {
+            text-align: right;
+        }
+        
+        .invoice-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .invoice-number {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .invoice-date {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .customer-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .customer-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        
+        .customer-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .items-table thead {
+            background: #333;
+            color: white;
+        }
+        
+        .items-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        
+        .items-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+            font-size: 11px;
+        }
+        
+        .items-table tbody tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .totals-section {
+            margin-top: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .totals-table {
+            width: 100%;
+            max-width: 300px;
+            margin-left: auto;
+        }
+        
+        .totals-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .totals-table td:first-child {
+            text-align: right;
+            font-weight: bold;
+        }
+        
+        .totals-table td:last-child {
+            text-align: right;
+        }
+        
+        .total-row {
+            font-weight: bold;
+            font-size: 14px;
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
+        }
+        
+        .payments-section {
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .payments-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .payments-table thead {
+            background: #f0f0f0;
+        }
+        
+        .payments-table th {
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 11px;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .payments-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 11px;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+        }
+        
+        @media print {
+            .invoice-container {
+                padding: 0;
+            }
+            
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- En-tête -->
+        <div class="header">
+            <div class="pharmacy-info">
+                {% if pharmacy_settings.logo_path %}
+                <img src="{{ pharmacy_settings.logo_path }}" alt="Logo" class="pharmacy-logo">
+                {% endif %}
+                <div class="pharmacy-name">{{ pharmacy_settings.name }}</div>
+                <div class="pharmacy-details">
+                    {% if pharmacy_settings.address %}{{ pharmacy_settings.address }}<br>{% endif %}
+                    {% if pharmacy_settings.phone %}Tél: {{ pharmacy_settings.phone }}<br>{% endif %}
+                    {% if pharmacy_settings.email %}Email: {{ pharmacy_settings.email }}{% endif %}
+                </div>
+            </div>
+            <div class="invoice-info">
+                <div class="invoice-title">FACTURE</div>
+                <div class="invoice-number">N° {{ invoice.invoice_number }}</div>
+                <div class="invoice-date">Date: {{ invoice.invoice_date|date:"d/m/Y H:i" }}</div>
+            </div>
+        </div>
+        
+        <!-- Informations client -->
+        <div class="customer-section">
+            <div class="section-title">Client</div>
+            <div class="customer-info">
+                <div class="customer-name">
+                    {% if sale.customer %}
+                        {{ sale.customer.name }}
+                    {% else %}
+                        Client anonyme
+                    {% endif %}
+                </div>
+                {% if sale.customer %}
+                    {% if sale.customer.address %}{{ sale.customer.address }}<br>{% endif %}
+                    {% if sale.customer.phone %}Tél: {{ sale.customer.phone }}<br>{% endif %}
+                    {% if sale.customer.email %}Email: {{ sale.customer.email }}{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Référence de vente -->
+        <div style="margin-bottom: 20px; font-size: 11px; color: #666;">
+            Référence vente: <strong>{{ sale.reference }}</strong>
+        </div>
+        
+        <!-- Tableau des produits -->
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th class="text-center">Quantité</th>
+                    <th class="text-right">Prix unitaire</th>
+                    <th class="text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in sale.items.all %}
+                <tr>
+                    <td>
+                        <strong>{{ item.product.name }}</strong><br>
+                        <small style="color: #666;">{{ item.product.barcode }}</small>
+                    </td>
+                    <td class="text-center">{{ item.quantity }}</td>
+                    <td class="text-right">{{ item.unit_price|floatformat:2 }} GNF</td>
+                    <td class="text-right"><strong>{{ item.line_total|floatformat:2 }} GNF</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- Totaux -->
+        <div class="totals-section">
+            <table class="totals-table">
+                <tr>
+                    <td>Sous-total:</td>
+                    <td>{{ sale.subtotal|floatformat:2 }} GNF</td>
+                </tr>
+                {% if sale.discount_value > 0 %}
+                <tr>
+                    <td>Remise ({{ sale.get_discount_display }}):</td>
+                    <td>-{{ discount_amount|floatformat:2 }} GNF</td>
+                </tr>
+                {% endif %}
+                {% if sale.tax_amount > 0 %}
+                <tr>
+                    <td>Taxe:</td>
+                    <td>{{ sale.tax_amount|floatformat:2 }} GNF</td>
+                </tr>
+                {% endif %}
+                <tr class="total-row">
+                    <td>Total TTC:</td>
+                    <td>{{ sale.total_amount|floatformat:2 }} GNF</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Informations de paiement -->
+        <div class="payments-section">
+            <div class="section-title">Paiements</div>
+            <table class="payments-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Montant</th>
+                        <th>Méthode</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in sale.payments.all %}
+                    <tr>
+                        <td>{{ payment.payment_date|date:"d/m/Y H:i" }}</td>
+                        <td class="text-right">{{ payment.amount|floatformat:2 }} GNF</td>
+                        <td>{{ payment.get_payment_method_display }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: bold; border-top: 2px solid #333;">
+                        <td>Total payé:</td>
+                        <td class="text-right">{{ sale.amount_paid|floatformat:2 }} GNF</td>
+                        <td></td>
+                    </tr>
+                    {% if sale.balance_due > 0 %}
+                    <tr style="color: #d32f2f;">
+                        <td>Solde dû:</td>
+                        <td class="text-right">{{ sale.balance_due|floatformat:2 }} GNF</td>
+                        <td></td>
+                    </tr>
+                    {% endif %}
+                </tfoot>
+            </table>
+        </div>
+        
+        <!-- Pied de page -->
+        {% if pharmacy_settings.legal_mentions %}
+        <div class="footer">
+            {{ pharmacy_settings.legal_mentions }}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+

@@ -41,7 +41,7 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', "").split(',')
 INSTALLED_APPS = [
     'accounts',
     'jazzmin',
-    'django.contrib.admin',
+    'pharmacy_pos.admin_config.CustomAdminConfig',  # Configuration admin personnalisée
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -149,6 +149,18 @@ if not DEBUG:
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ============================================================================
+# Informations de la pharmacie (pour les factures)
+# ============================================================================
+PHARMACY_SETTINGS = {
+    'name': os.getenv('PHARMACY_NAME', 'Pharmacie de la Poste'),
+    'address': os.getenv('PHARMACY_ADDRESS', 'Pita Centre'),
+    'phone': os.getenv('PHARMACY_PHONE', '620000000'),
+    'email': os.getenv('PHARMACY_EMAIL', 'contact@pharmaciedelaposte.com'),
+    'logo_path': os.getenv('PHARMACY_LOGO_PATH', ''),  # Chemin vers le logo (static)
+    'legal_mentions': os.getenv('PHARMACY_LEGAL_MENTIONS', ''),
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -208,10 +220,10 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
 
         # Url that gets reversed (Permissions can be added)
-        {"name": "Home",  "url": "admin:index", "permissions": ["auth.view_user"]},
+        # {"name": "Home",  "url": "admin:index", "permissions": ["auth.view_user"]},
 
         # external url that opens in a new window (Permissions can be added)
-        {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
+        # {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
 
         # model admin to link to (Permissions checked against model)
         # {"model": "auth.User"},
@@ -258,13 +270,16 @@ JAZZMIN_SETTINGS = {
         "catalog.Category": "fas fa-box",
         "catalog.Product": "fas fa-pills",
         "catalog.Supplier": "fas fa-truck",
+        "catalog.PurchaseOrder": "fas fa-shopping-bag",
+        "catalog.Lot": "fas fa-boxes",
         "catalog.StockMovement": "fas fa-exchange-alt",
         "catalog.DosageForm": "fas fa-pills",
         "sales.Sale": "fas fa-cash-register",
-        "sales.Customer":"fas fa-user",
+        "sales.Customer": "fas fa-user",
         "sales.Invoice": "fas fa-file-invoice",
         "sales.Payment": "fas fa-money-bill",
-        "sales.SaleItem": "fas fa-shopping-cart"
+        "sales.SaleItem": "fas fa-shopping-cart",
+        "sales.SaleItemLot": "fas fa-tags",
     },
     # Icons that are used when one is not manually specified
     "default_icon_parents": "fas fa-chevron-circle-right",
@@ -298,5 +313,9 @@ JAZZMIN_SETTINGS = {
     # - carousel
     "changeform_format": "horizontal_tabs",
     # override change forms on a per modeladmin basis
-    "changeform_format_overrides": {"auth.user": "collapsible", "auth.group": "vertical_tabs"},
+    "changeform_format_overrides": {
+        "auth.user": "collapsible",
+        "auth.group": "vertical_tabs",
+        "sales.sale": "single",  # Pas d'onglets pour les ventes
+    },
 }
