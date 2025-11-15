@@ -27,14 +27,8 @@
 
 {% block extrahead %}
 {{ block.super }}
-<!-- React et ReactDOM via CDN -->
-<script async defer src="{% static 'js/react.production.min.js' %}"></script>
-<script async defer src="{% static 'js/react-dom.production.min.js' %}"></script>
-
-<!-- Babel Standalone pour transformer le JSX -->
-<script async defer src="{% static 'js/babel.min.js' %}"></script>
-<script async defer>
-    // Variables globales pour React
+<!-- Variables globales pour React (chargées en premier) -->
+<script>
     window.SALE_FORM_CONFIG = {
         apiBaseUrl: '/api/sales/',
         csrfToken: '{{ csrf_token }}',
@@ -45,7 +39,76 @@
     console.log('🔵 Template React chargé');
     console.log('🔵 SALE_FORM_CONFIG:', window.SALE_FORM_CONFIG);
 </script>
-<script async defer type="text/babel" src="{% static 'admin/js/sale_form_react.jsx' %}"></script>
+
+<!-- Babel Standalone doit être chargé AVANT le script JSX (sans async defer) -->
+<script src="{% static 'js/babel.min.js' %}"></script>
+
+<!-- React et ReactDOM -->
+<script async defer src="{% static 'js/react.production.min.js' %}"></script>
+<script async defer src="{% static 'js/react-dom.production.min.js' %}"></script>
+
+<!-- Charger et transformer le script JSX -->
+<script>
+  // Attendre que tous les scripts soient chargés
+  function loadReactApp() {
+    // Vérifier que Babel est disponible
+    if (typeof window.Babel === 'undefined') {
+      console.log('⏳ En attente de Babel...');
+      setTimeout(loadReactApp, 100);
+      return;
+    }
+    
+    // Vérifier que React et ReactDOM sont disponibles
+    if (typeof window.React === 'undefined' || typeof window.ReactDOM === 'undefined') {
+      console.log('⏳ En attente de React et ReactDOM...');
+      setTimeout(loadReactApp, 100);
+      return;
+    }
+    
+    console.log('✅ Toutes les dépendances sont chargées');
+    
+    // Charger le script JSX
+    const jsxUrl = '{% static "admin/js/sale_form_react.jsx" %}';
+    fetch(jsxUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Erreur HTTP: ' + response.status);
+        }
+        return response.text();
+      })
+      .then(jsxCode => {
+        try {
+          console.log('✅ Script JSX chargé, transformation en cours...');
+          
+          // Transformer le JSX avec Babel
+          const transformed = window.Babel.transform(jsxCode, {
+            presets: ['react']
+          }).code;
+          
+          // Exécuter le code transformé
+          const script = document.createElement('script');
+          script.textContent = transformed;
+          document.head.appendChild(script);
+          
+          console.log('✅ Script JSX transformé et exécuté');
+        } catch (error) {
+          console.error('❌ Erreur lors de la transformation JSX:', error);
+          console.error('Détails:', error.stack);
+        }
+      })
+      .catch(error => {
+        console.error('❌ Erreur lors du chargement du script JSX:', error);
+        console.error('URL tentée:', jsxUrl);
+      });
+  }
+  
+  // Démarrer le chargement
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadReactApp);
+  } else {
+    loadReactApp();
+  }
+</script>
 
 <script>
   // Debug final
@@ -53,6 +116,7 @@
     console.log('🟢 Page complètement chargée');
     console.log('🟢 React:', typeof window.React !== 'undefined' ? '✅' : '❌');
     console.log('🟢 ReactDOM:', typeof window.ReactDOM !== 'undefined' ? '✅' : '❌');
+    console.log('🟢 Babel:', typeof window.Babel !== 'undefined' ? '✅' : '❌');
     console.log('🟢 Container:', document.getElementById('content-main') ? '✅' : '❌');
   });
 </script>
