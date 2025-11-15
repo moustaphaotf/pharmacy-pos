@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
@@ -14,13 +16,41 @@ class CustomerResource(resources.ModelResource):
         export_order = ('id', 'name', 'email', 'phone', 'address', 'credit_balance', 'created_at', 'updated_at')
 
 
+class HasDebtFilter(admin.SimpleListFilter):
+    """
+    Filtre personnalisé pour filtrer les clients qui ont une dette.
+    """
+    title = _('A une dette')
+    parameter_name = 'has_debt'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', _('Oui')),
+            ('no', _('Non')),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(credit_balance__gt=Decimal('0.00'))
+        elif self.value() == 'no':
+            return queryset.filter(credit_balance__lte=Decimal('0.00'))
+        return queryset
+
+
 @admin.register(Customer)
 class CustomerAdmin(ImportExportModelAdmin):
     resource_class = CustomerResource
-    list_display = ('name', 'email', 'phone', 'credit_balance', 'is_anonymous')
-    list_filter = ('is_anonymous',)
+    list_display = ('name', 'email', 'phone', 'credit_balance', 'has_debt', 'is_anonymous')
+    list_filter = ('is_anonymous', HasDebtFilter)
     search_fields = ('name', 'email', 'phone')
-    
+
+    @admin.display(boolean=True, description='A une dette')
+    def has_debt(self, obj):
+        """
+        Affiche si le client a une dette (solde crédit > 0).
+        """
+        return obj.has_debt
+
     def get_queryset(self, request):
         """
         Par défaut, exclure les clients anonymes de la liste.

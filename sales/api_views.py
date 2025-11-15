@@ -549,7 +549,7 @@ def create_sale(request):
                 discount_value=discount_value,
                 total_amount=total_amount,
                 notes=data.get('notes', ''),
-                status=Sale.Status.DRAFT,
+                status=Sale.Status.PENDING,
             )
             
             # Créer les items et ajuster les stocks

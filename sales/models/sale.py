@@ -18,7 +18,7 @@ from .customer import Customer
 
 class Sale(TimeStampedModel):
     class Status(models.TextChoices):
-        DRAFT = 'draft', 'Brouillon'
+        PENDING = 'pending', 'En attente'
         PAID = 'paid', 'Payée'
         PARTIAL = 'partial', 'Partielle'
 
@@ -106,7 +106,7 @@ class Sale(TimeStampedModel):
         'Statut',
         max_length=20,
         choices=Status.choices,
-        default=Status.DRAFT,
+        default=Status.PENDING,
     )
     notes = models.TextField('Notes', blank=True)
 
@@ -164,11 +164,17 @@ class Sale(TimeStampedModel):
         self.save(update_fields=['subtotal', 'total_amount', 'balance_due', 'status', 'updated_at'])
 
     def compute_status(self) -> str:
+        """
+        Calcule le statut de la vente basé sur le montant payé par rapport au montant total APRÈS remise.
+        La remise n'est pas due, donc on compare avec le montant total APRÈS remise (total_amount).
+        """
+        # total_amount est déjà calculé comme (items_total - discount_amount) + tax_amount
+        # Donc c'est le montant APRÈS remise
         if self.amount_paid >= self.total_amount:
             return self.Status.PAID
         if self.amount_paid > 0:
             return self.Status.PARTIAL
-        return self.Status.DRAFT
+        return self.Status.PENDING
 
     def refresh_payment_summary(self) -> None:
         payments_total = self.payments.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
@@ -183,20 +189,24 @@ class Sale(TimeStampedModel):
     @staticmethod
     def recalculate_customer_credit(customer_id: Optional[int]) -> None:
         """
-        Recalcule le solde crédit du client en additionnant tous les balance_due > 0.
-        Une vente à crédit est simplement une vente avec un solde restant à payer.
+        Recalcule le solde crédit du client en additionnant tous les montants dus APRÈS remise.
+        La remise n'est pas due, donc on calcule le crédit sur le montant total APRÈS remise (total_amount).
         """
         if not customer_id:
             return
         customer = Customer.objects.filter(pk=customer_id).first()
         if not customer:
             return
-        credit_total = (
-            customer.sales.filter(
-                balance_due__gt=Decimal('0.00'),
-            ).aggregate(total=Sum('balance_due'))['total']
-            or Decimal('0.00')
-        )
+        
+        # Calculer le crédit total : montant total APRÈS remise - montant payé
+        # Le total_amount est déjà calculé comme (items_total - discount_amount) + tax_amount
+        credit_total = Decimal('0.00')
+        for sale in customer.sales.all():
+            # total_amount est déjà le montant après remise
+            amount_due = sale.total_amount - sale.amount_paid
+            if amount_due > 0:
+                credit_total += amount_due
+        
         customer.credit_balance = credit_total
         customer.save(update_fields=['credit_balance', 'updated_at'])
 

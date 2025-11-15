@@ -31,6 +31,13 @@ class Customer(TimeStampedModel):
         verbose_name_plural = 'Clients'
         ordering = ['name']
 
+    @property
+    def has_debt(self) -> bool:
+        """
+        Indique si le client a une dette (solde crédit > 0).
+        """
+        return self.credit_balance > Decimal('0.00')
+
     def __str__(self) -> str:
         return self.name
 
