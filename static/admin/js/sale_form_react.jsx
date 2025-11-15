@@ -368,6 +368,18 @@
       setPayments(payments.filter((_, i) => i !== index));
     };
 
+    // Copier le montant total dans le champ de paiement
+    const copyTotalToPayment = () => {
+      if (payments.length > 0 && totalAmount > 0) {
+        const updatedPayments = [...payments];
+        updatedPayments[0] = {
+          ...updatedPayments[0],
+          amount: totalAmount.toFixed(2),
+        };
+        setPayments(updatedPayments);
+      }
+    };
+
     // Soumettre la vente
     const handleSubmit = async (e) => {
       e.preventDefault();
@@ -721,15 +733,28 @@
             )}
             {payments.map((payment, index) => (
               <div key={index} className="payment-row">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="Montant"
-                  value={payment.amount}
-                  onChange={(e) => updatePayment(index, 'amount', e.target.value)}
-                  className={errors[`payments.${index}.amount`] ? 'error' : ''}
-                />
+                <div className="payment-amount-input-wrapper">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="Montant"
+                    value={payment.amount}
+                    onChange={(e) => updatePayment(index, 'amount', e.target.value)}
+                    className={errors[`payments.${index}.amount`] ? 'error' : ''}
+                  />
+                  {/* Bouton pour copier le total (seulement pour nouvelles ventes, premier paiement) */}
+                  {isNewSale && index === 0 && totalAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={copyTotalToPayment}
+                      className="btn-copy-total"
+                      title="Copier le montant total"
+                    >
+                      📋
+                    </button>
+                  )}
+                </div>
                 <select
                   value={payment.paymentMethod}
                   onChange={(e) => updatePayment(index, 'paymentMethod', e.target.value)}

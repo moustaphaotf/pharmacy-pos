@@ -281,20 +281,21 @@
 }
 
 .btn-add {
-  background: #262a27;
+  background: #6c757d;
   color: #fff;
   border: none;
   padding: 10px 20px;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 15px;
   display: block;
   margin-left: auto;
+  transition: background-color 0.2s;
 }
 
 .btn-add:hover {
-  background: #272b28;
+  background: #5a6268;
 }
 
 .payment-row {
@@ -306,6 +307,40 @@
   padding: 10px;
   background: #f8f9fa;
   border-radius: 4px;
+}
+
+.payment-amount-input-wrapper {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.payment-amount-input-wrapper input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.btn-copy-total {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #dee2e6;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-copy-total:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+  color: #495057;
 }
 
 .payment-row input,
@@ -385,7 +420,7 @@
 }
 
 .btn-submit {
-  background: var(--btn-primary);
+  background: #007bff;
   color: #fff;
   border: none;
   padding: 15px 40px;
