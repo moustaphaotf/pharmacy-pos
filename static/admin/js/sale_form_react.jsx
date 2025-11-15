@@ -20,6 +20,9 @@
   };
   const CSRF_TOKEN = window.SALE_FORM_CONFIG?.csrfToken || '';
   
+  // Durée d'affichage des notifications (en millisecondes)
+  const NOTIFICATION_DURATION = 5000;
+  
   console.log('🔧 API Base URL configuré:', apiBaseUrl);
   console.log('🔧 Test URL customers:', getApiUrl('customers/'));
   console.log('🔧 Test URL products:', getApiUrl('products/search/'));
@@ -45,11 +48,14 @@
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState([]);
     const [showSearchResults, setShowSearchResults] = React.useState(false);
+    const [hasSearched, setHasSearched] = React.useState(false); // Pour savoir si une recherche a été effectuée
+    const searchContainerRef = React.useRef(null); // Référence pour détecter les clics en dehors
     
     const [errors, setErrors] = React.useState({});
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [submitSuccess, setSubmitSuccess] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [notification, setNotification] = React.useState(null); // Notification pour les actions
 
     const saleId = window.SALE_FORM_CONFIG?.saleId;
     const isNewSale = !saleId;
@@ -143,6 +149,7 @@
       if (query.length < 2) {
         setSearchResults([]);
         setShowSearchResults(false);
+        setHasSearched(false);
         return;
       }
 
@@ -155,11 +162,14 @@
           },
         });
         const data = await response.json();
-        setSearchResults(data.products || []);
+        const products = data.products || [];
+        setSearchResults(products);
         setShowSearchResults(true);
+        setHasSearched(true); // Marquer qu'une recherche a été effectuée
       } catch (error) {
         console.error('Erreur lors de la recherche:', error);
         setSearchResults([]);
+        setHasSearched(true);
       }
     }, []);
 
@@ -172,11 +182,34 @@
       return () => clearTimeout(timer);
     }, [searchQuery, searchProducts]);
 
+    // Fermer les résultats de recherche quand on clique en dehors
+    React.useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+          setShowSearchResults(false);
+        }
+      };
+
+      if (showSearchResults) {
+        document.addEventListener('mousedown', handleClickOutside);
+      }
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }, [showSearchResults]);
+
     // Ajouter un produit
     const addProduct = async (product) => {
       // Vérifier si le produit n'est pas déjà dans la liste
       if (items.find(item => item.productId === product.id)) {
-        alert('Ce produit est déjà dans la vente');
+        setNotification({
+          type: 'error',
+          message: 'Ce produit est déjà dans la vente',
+        });
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
         return;
       }
 
@@ -198,7 +231,13 @@
         const data = await response.json();
         
         if (!data.valid) {
-          alert(data.error || 'Stock insuffisant');
+          setNotification({
+            type: 'error',
+            message: data.error || 'Stock insuffisant',
+          });
+          setTimeout(() => {
+            setNotification(null);
+          }, NOTIFICATION_DURATION);
           return;
         }
 
@@ -218,9 +257,26 @@
         setItems([...items, newItem]);
         setSearchQuery('');
         setShowSearchResults(false);
+        
+        // Afficher une notification de succès
+        setNotification({
+          type: 'success',
+          message: `${product.name} ajouté avec succès`,
+        });
+        
+        // Fermer automatiquement après la durée définie
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
       } catch (error) {
         console.error('Erreur lors de l\'ajout du produit:', error);
-        alert('Erreur lors de l\'ajout du produit');
+        setNotification({
+          type: 'error',
+          message: 'Erreur lors de l\'ajout du produit',
+        });
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
       }
     };
 
@@ -251,7 +307,13 @@
         const data = await response.json();
         
         if (!data.valid) {
-          alert(data.error || 'Stock insuffisant');
+          setNotification({
+            type: 'error',
+            message: data.error || 'Stock insuffisant',
+          });
+          setTimeout(() => {
+            setNotification(null);
+          }, NOTIFICATION_DURATION);
           return;
         }
 
@@ -267,7 +329,13 @@
         setItems(updatedItems);
       } catch (error) {
         console.error('Erreur lors de la mise à jour:', error);
-        alert('Erreur lors de la mise à jour de la quantité');
+        setNotification({
+          type: 'error',
+          message: 'Erreur lors de la mise à jour de la quantité',
+        });
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
       }
     };
 
@@ -434,6 +502,19 @@
 
     return (
       <div className="content-main">
+        {/* Notification toast */}
+        {notification && (
+          <div className={`notification notification-${notification.type}`}>
+            <span>{notification.message}</span>
+            <button
+              type="button"
+              onClick={() => setNotification(null)}
+              className="notification-close"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           {/* En-tête */}
           <div className="sale-header">
@@ -506,30 +587,40 @@
           {/* Recherche de produits */}
           <div className="product-search-section">
             <h3>Produits</h3>
-            <div className="search-container">
+            <div className="search-container" ref={searchContainerRef}>
               <input
                 type="text"
                 placeholder="Rechercher un produit (nom ou code-barres)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                onFocus={() => {
+                  if (searchQuery.length >= 2) {
+                    setShowSearchResults(true);
+                  }
+                }}
               />
-              {showSearchResults && searchResults.length > 0 && (
+              {showSearchResults && (
                 <div className="search-results">
-                  {searchResults.map(product => (
-                    <div
-                      key={product.id}
-                      className={`search-result-item ${product.stock_available === 0 ? 'out-of-stock' : ''}`}
-                      onClick={() => addProduct(product)}
-                    >
-                      <div className="product-name">{product.name}</div>
-                      <div className="product-details">
-                        <span>{product.barcode}</span>
-                        <span>{parseFloat(product.sale_price).toFixed(2)} GNF</span>
-                        <span>Stock: {product.stock_available}</span>
+                  {searchResults.length > 0 ? (
+                    searchResults.map(product => (
+                      <div
+                        key={product.id}
+                        className={`search-result-item ${product.stock_available === 0 ? 'out-of-stock' : ''}`}
+                        onClick={() => addProduct(product)}
+                      >
+                        <div className="product-name">{product.name}</div>
+                        <div className="product-details">
+                          <span>{product.barcode}</span>
+                          <span>{parseFloat(product.sale_price).toFixed(2)} GNF</span>
+                          <span>Stock: {product.stock_available}</span>
+                        </div>
                       </div>
+                    ))
+                  ) : hasSearched && searchQuery.length >= 2 ? (
+                    <div className="search-no-results">
+                      Aucun produit trouvé pour "{searchQuery}"
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -681,11 +772,10 @@
             <h3>Notes</h3>
             <textarea
               value={notes}
+              placeholder="Fournissez des informations supplémentaires sur la vente ou le client..."
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-            >
-                Fournissez des informations supplémentaires sur la vente ou le client...
-            </textarea>
+            />
           </div>
 
           {/* Messages d'erreur généraux */}
