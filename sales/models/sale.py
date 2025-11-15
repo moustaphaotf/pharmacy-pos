@@ -48,12 +48,31 @@ class Sale(TimeStampedModel):
         decimal_places=2,
         default=Decimal('0.00'),
     )
-    discount_amount = models.DecimalField(
-        'Remise',
+    class DiscountType(models.TextChoices):
+        AMOUNT = 'amount', 'Montant'
+        PERCENTAGE = 'percentage', 'Pourcentage'
+
+    discount_type = models.CharField(
+        'Type de remise',
+        max_length=20,
+        choices=DiscountType.choices,
+        default=DiscountType.AMOUNT,
+    )
+    discount_value = models.DecimalField(
+        'Valeur de la remise',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0.00'),
-        help_text='Montant de la remise appliquée à la vente',
+        help_text='Montant ou pourcentage de la remise selon le type',
+    )
+    # Champ legacy pour compatibilité (sera supprimé après migration)
+    discount_amount = models.DecimalField(
+        'Remise (legacy)',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Montant de la remise appliquée à la vente (deprecated)',
+        editable=False,
     )
     total_amount = models.DecimalField(
         'Total TTC',
@@ -90,9 +109,36 @@ class Sale(TimeStampedModel):
     def __str__(self) -> str:
         return f'Vente #{self.pk or "—"}'
 
+    def get_discount_display(self) -> str:
+        """
+        Retourne la remise formatée pour l'affichage.
+        Ex: "10% (100.00 GNF)" ou "100.00 GNF"
+        """
+        if self.discount_value == 0:
+            return '0.00 GNF'
+        
+        if self.discount_type == self.DiscountType.PERCENTAGE:
+            # Calculer le montant réel pour l'affichage
+            # On utilise le subtotal actuel pour le calcul
+            subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
+            discount_amount = self.calculate_discount_amount(subtotal)
+            return f"{self.discount_value}% ({discount_amount:.2f} GNF)"
+        else:
+            return f"{self.discount_value:.2f} GNF"
+
+    def calculate_discount_amount(self, subtotal: Decimal) -> Decimal:
+        """
+        Calcule le montant réel de la remise selon le type.
+        """
+        if self.discount_type == self.DiscountType.PERCENTAGE:
+            return subtotal * (self.discount_value / Decimal('100.00'))
+        else:  # AMOUNT
+            return self.discount_value
+
     def update_totals_from_items(self) -> None:
         subtotal = self.items.aggregate(total=Sum('line_total'))['total'] or Decimal('0.00')
-        self.subtotal = subtotal - self.discount_amount  # Sous-total après remise
+        discount_amount = self.calculate_discount_amount(subtotal)
+        self.subtotal = subtotal - discount_amount  # Sous-total après remise
         self.total_amount = self.subtotal + self.tax_amount
         self.balance_due = self.total_amount - self.amount_paid
         self.status = self.compute_status()

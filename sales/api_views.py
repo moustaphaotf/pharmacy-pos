@@ -285,7 +285,8 @@ def sale_detail(request, sale_id):
         'sale_date': sale.sale_date.isoformat() if sale.sale_date else None,
         'notes': sale.notes or '',
         'tax_amount': str(sale.tax_amount),
-        'discount_amount': str(sale.discount_amount),
+        'discount_type': sale.discount_type,
+        'discount_value': str(sale.discount_value),
         'subtotal': str(sale.subtotal),
         'total_amount': str(sale.total_amount),
         'amount_paid': str(sale.amount_paid),
@@ -389,10 +390,16 @@ def create_sale(request):
         errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
-    discount_amount = Decimal(str(data.get('discount_amount', '0.00')))
+    discount_type = data.get('discount_type', 'amount')
+    discount_value = Decimal(str(data.get('discount_value', '0.00')))
     
-    if discount_amount < 0:
-        errors['discount_amount'] = 'La remise ne peut pas être négative'
+    # Validation du type de remise
+    if discount_type not in ['amount', 'percentage']:
+        errors['discount_type'] = 'Type de remise invalide (amount ou percentage)'
+    
+    # Validation de la valeur de remise
+    if discount_value < 0:
+        errors['discount_value'] = 'La valeur de remise ne peut pas être négative'
     
     # Validation des items
     items_data = data.get('items', [])
@@ -501,12 +508,30 @@ def create_sale(request):
             # Calculer le sous-total
             subtotal = sum(item['line_total'] for item in validated_items)
             
+            # Calculer le montant réel de la remise selon le type
+            if discount_type == 'percentage':
+                # Validation : pourcentage ne doit pas dépasser 100%
+                if discount_value > 100:
+                    return JsonResponse({
+                        'success': False,
+                        'errors': {'discount_value': 'Le pourcentage ne peut pas dépasser 100%'},
+                    }, status=400)
+                discount_amount = subtotal * (discount_value / Decimal('100.00'))
+            else:  # amount
+                discount_amount = discount_value
+                # Validation : montant ne doit pas dépasser le sous-total
+                if discount_amount > subtotal:
+                    return JsonResponse({
+                        'success': False,
+                        'errors': {'discount_value': 'La remise ne peut pas dépasser le sous-total'},
+                    }, status=400)
+            
             # Appliquer la remise
             subtotal_after_discount = subtotal - discount_amount
             if subtotal_after_discount < 0:
                 return JsonResponse({
                     'success': False,
-                    'errors': {'discount_amount': 'La remise ne peut pas dépasser le sous-total'},
+                    'errors': {'discount_value': 'La remise ne peut pas dépasser le sous-total'},
                 }, status=400)
             
             # Calculer le total
@@ -519,7 +544,8 @@ def create_sale(request):
                 sale_date=data.get('sale_date') or None,
                 subtotal=subtotal_after_discount,
                 tax_amount=tax_amount,
-                discount_amount=discount_amount,
+                discount_type=discount_type,
+                discount_value=discount_value,
                 total_amount=total_amount,
                 notes=data.get('notes', ''),
                 status=Sale.Status.DRAFT,
@@ -578,7 +604,8 @@ def create_sale(request):
                     'id': sale.id,
                     'subtotal': str(sale.subtotal),
                     'tax_amount': str(sale.tax_amount),
-                    'discount_amount': str(discount_amount),
+                    'discount_type': sale.discount_type,
+                    'discount_value': str(sale.discount_value),
                     'total_amount': str(sale.total_amount),
                     'amount_paid': str(sale.amount_paid),
                     'balance_due': str(sale.balance_due),
@@ -666,10 +693,16 @@ def update_sale(request, sale_id):
         errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
-    discount_amount = Decimal(str(data.get('discount_amount', '0.00')))
+    discount_type = data.get('discount_type', 'amount')
+    discount_value = Decimal(str(data.get('discount_value', '0.00')))
     
-    if discount_amount < 0:
-        errors['discount_amount'] = 'La remise ne peut pas être négative'
+    # Validation du type de remise
+    if discount_type not in ['amount', 'percentage']:
+        errors['discount_type'] = 'Type de remise invalide (amount ou percentage)'
+    
+    # Validation de la valeur de remise
+    if discount_value < 0:
+        errors['discount_value'] = 'La valeur de remise ne peut pas être négative'
     
     # Validation des items
     items_data = data.get('items', [])
@@ -809,12 +842,30 @@ def update_sale(request, sale_id):
             # Calculer le sous-total
             subtotal = sum(item['line_total'] for item in validated_items)
             
+            # Calculer le montant réel de la remise selon le type
+            if discount_type == 'percentage':
+                # Validation : pourcentage ne doit pas dépasser 100%
+                if discount_value > 100:
+                    return JsonResponse({
+                        'success': False,
+                        'errors': {'discount_value': 'Le pourcentage ne peut pas dépasser 100%'},
+                    }, status=400)
+                discount_amount = subtotal * (discount_value / Decimal('100.00'))
+            else:  # amount
+                discount_amount = discount_value
+                # Validation : montant ne doit pas dépasser le sous-total
+                if discount_amount > subtotal:
+                    return JsonResponse({
+                        'success': False,
+                        'errors': {'discount_value': 'La remise ne peut pas dépasser le sous-total'},
+                    }, status=400)
+            
             # Appliquer la remise
             subtotal_after_discount = subtotal - discount_amount
             if subtotal_after_discount < 0:
                 return JsonResponse({
                     'success': False,
-                    'errors': {'discount_amount': 'La remise ne peut pas dépasser le sous-total'},
+                    'errors': {'discount_value': 'La remise ne peut pas dépasser le sous-total'},
                 }, status=400)
             
             # Calculer le total
@@ -824,7 +875,8 @@ def update_sale(request, sale_id):
             sale.customer = customer
             sale.subtotal = subtotal_after_discount
             sale.tax_amount = tax_amount
-            sale.discount_amount = discount_amount
+            sale.discount_type = discount_type
+            sale.discount_value = discount_value
             sale.total_amount = total_amount
             sale.notes = data.get('notes', '')
             if data.get('sale_date'):
@@ -911,7 +963,8 @@ def update_sale(request, sale_id):
                     'id': sale.id,
                     'subtotal': str(sale.subtotal),
                     'tax_amount': str(sale.tax_amount),
-                    'discount_amount': str(discount_amount),
+                    'discount_type': sale.discount_type,
+                    'discount_value': str(sale.discount_value),
                     'total_amount': str(sale.total_amount),
                     'amount_paid': str(sale.amount_paid),
                     'balance_due': str(sale.balance_due),

@@ -40,7 +40,8 @@
     const [saleDate, setSaleDate] = React.useState(new Date().toISOString().slice(0, 16));
     const [notes, setNotes] = React.useState('');
     const [taxAmount, setTaxAmount] = React.useState('0.00');
-    const [discountAmount, setDiscountAmount] = React.useState('0.00');
+    const [discountType, setDiscountType] = React.useState('amount');
+    const [discountValue, setDiscountValue] = React.useState('0.00');
     
     const [items, setItems] = React.useState([]);
     const [payments, setPayments] = React.useState([]);
@@ -100,7 +101,8 @@
               }
               setNotes(saleData.notes || '');
               setTaxAmount(saleData.tax_amount || '0.00');
-              setDiscountAmount(saleData.discount_amount || '0.00');
+              setDiscountType(saleData.discount_type || 'amount');
+              setDiscountValue(saleData.discount_value || '0.00');
               
               // Charger les items
               const loadedItems = saleData.items.map(item => ({
@@ -139,7 +141,16 @@
 
     // Calculs
     const subtotal = items.reduce((sum, item) => sum + parseFloat(item.lineTotal || 0), 0);
-    const subtotalAfterDiscount = Math.max(0, subtotal - parseFloat(discountAmount || 0));
+    
+    // Calculer le montant réel de la remise selon le type
+    let discountAmount = 0;
+    if (discountType === 'percentage') {
+      discountAmount = subtotal * (parseFloat(discountValue || 0) / 100);
+    } else {
+      discountAmount = parseFloat(discountValue || 0);
+    }
+    
+    const subtotalAfterDiscount = Math.max(0, subtotal - discountAmount);
     const totalAmount = subtotalAfterDiscount + parseFloat(taxAmount || 0);
     const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.amount || 0), 0);
     const balanceDue = totalAmount - totalPaid;
@@ -425,7 +436,8 @@
         customer_id: isAnonymousCustomer ? null : customerId,
         sale_date: saleDate,
         tax_amount: taxAmount || '0.00',
-        discount_amount: discountAmount || '0.00',
+        discount_type: discountType,
+        discount_value: discountValue || '0.00',
         notes: notes,
         items: items.map(item => ({
           product_id: item.productId,
@@ -486,6 +498,17 @@
 
         // Succès
         setSubmitSuccess(true);
+        if (isNewSale) {
+          setNotification({
+            type: 'success',
+            message: 'Vente créée avec succès ! Redirection en cours ...',
+          });
+        } else {
+          setNotification({
+            type: 'success',
+            message: 'Vente mise à jour avec succès ! Redirection en cours ...',
+          });
+        }
         setTimeout(() => {
           // Recharger la page pour voir les modifications
           if (isNewSale) {
@@ -688,14 +711,34 @@
             </div>
             <div className="totals-row">
               <label>Remise:</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max={subtotal}
-                value={discountAmount}
-                onChange={(e) => setDiscountAmount(e.target.value)}
-              />
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={discountType}
+                  onChange={(e) => {
+                    setDiscountType(e.target.value);
+                    setDiscountValue('0.00');
+                  }}
+                  style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                >
+                  <option value="amount">Montant</option>
+                  <option value="percentage">Pourcentage</option>
+                </select>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={discountType === 'percentage' ? 100 : subtotal}
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  style={{ width: '120px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+                <span>{discountType === 'percentage' ? '%' : 'GNF'}</span>
+                {discountType === 'percentage' && parseFloat(discountValue || 0) > 0 && (
+                  <span style={{ color: '#666', fontSize: '0.9em' }}>
+                    ({discountAmount.toFixed(2)} GNF)
+                  </span>
+                )}
+              </div>
             </div>
             <div className="totals-row">
               <span>Sous-total après remise:</span>
@@ -808,17 +851,6 @@
             <div className="error-message general-error">{errors._general}</div>
           )}
 
-          {/* Message de succès */}
-          {submitSuccess && (
-           <>
-           {isNewSale ? (
-               <div className="success-message">Vente créée avec succès ! Redirection...</div>
-           ) : (
-               <div className="success-message">Vente modifiée avec succès ! Redirection...</div>
-           )}
-           
-           </>
-          )}
 
           {/* Bouton de soumission */}
           <div className="submit-section">
