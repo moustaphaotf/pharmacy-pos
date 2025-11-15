@@ -45,6 +45,7 @@
     
     const [items, setItems] = React.useState([]);
     const [payments, setPayments] = React.useState([]);
+    const [invoices, setInvoices] = React.useState([]);
     
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState([]);
@@ -75,12 +76,25 @@
           setCustomers(customersData.customers || []);
           // Si modification, charger les données de la vente
           if (!isNewSale && saleId) {
+            console.log('📥 Chargement des données de la vente:', saleId);
             const saleResponse = await fetch(getApiUrl(`${saleId}/`), {
               headers: {
                 'X-CSRFToken': CSRF_TOKEN,
               },
             });
+            
+            if (!saleResponse.ok) {
+              console.error('❌ Erreur HTTP lors du chargement de la vente:', saleResponse.status, saleResponse.statusText);
+              throw new Error(`Erreur ${saleResponse.status}: ${saleResponse.statusText}`);
+            }
+            
             const saleData = await saleResponse.json();
+            console.log('📦 Données de la vente reçues:', saleData);
+            
+            if (saleData.error) {
+              console.error('❌ Erreur dans la réponse:', saleData.error);
+              throw new Error(saleData.error);
+            }
             
             if (saleData.sale_id) {
               // Remplir le formulaire avec les données existantes
@@ -122,6 +136,9 @@
                 paymentMethod: payment.payment_method,
               }));
               setPayments(loadedPayments);
+              
+              // Charger les factures
+              setInvoices(saleData.invoices || []);
             } else {
               // Pour une nouvelle vente, initialiser avec un paiement vide
               setPayments([{ amount: '', paymentMethod: 'cash' }]);
@@ -131,7 +148,14 @@
             setPayments([{ amount: '', paymentMethod: 'cash' }]);
           }
         } catch (error) {
-          console.error('Erreur lors du chargement des données:', error);
+          console.error('❌ Erreur lors du chargement des données:', error);
+          setNotification({
+            type: 'error',
+            message: `Erreur lors du chargement: ${error.message || 'Erreur inconnue'}`,
+          });
+          setTimeout(() => {
+            setNotification(null);
+          }, NOTIFICATION_DURATION);
         } finally {
           setIsLoading(false);
         }
@@ -392,6 +416,78 @@
     };
 
     // Soumettre la vente
+    // Générer une facture
+    const handleGenerateInvoice = async () => {
+      if (!saleId) {
+        setNotification({
+          type: 'error',
+          message: 'Impossible de générer une facture pour une vente non sauvegardée',
+        });
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
+        return;
+      }
+
+      try {
+        // Appeler l'API pour générer la facture
+        const response = await fetch(getApiUrl(`${saleId}/generate-invoice/`), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN,
+          },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          setNotification({
+            type: 'error',
+            message: data.error || 'Erreur lors de la génération de la facture',
+          });
+          setTimeout(() => {
+            setNotification(null);
+          }, NOTIFICATION_DURATION);
+          return;
+        }
+
+        // Ouvrir la prévisualisation dans un nouvel onglet
+        if (data.invoice_id) {
+          const previewUrl = `/invoices/${data.invoice_id}/preview/`;
+          window.open(previewUrl, '_blank');
+          
+          // Recharger les factures pour afficher la nouvelle
+          const saleResponse = await fetch(getApiUrl(`${saleId}/`), {
+            headers: {
+              'X-CSRFToken': CSRF_TOKEN,
+            },
+          });
+          const saleData = await saleResponse.json();
+          if (saleData.invoices) {
+            setInvoices(saleData.invoices);
+          }
+          
+          setNotification({
+            type: 'success',
+            message: 'Facture générée avec succès !',
+          });
+          setTimeout(() => {
+            setNotification(null);
+          }, NOTIFICATION_DURATION);
+        }
+      } catch (error) {
+        console.error('Erreur lors de la génération de la facture:', error);
+        setNotification({
+          type: 'error',
+          message: 'Erreur lors de la génération de la facture',
+        });
+        setTimeout(() => {
+          setNotification(null);
+        }, NOTIFICATION_DURATION);
+      }
+    };
+
     const handleSubmit = async (e) => {
       e.preventDefault();
       setErrors({});
@@ -835,6 +931,50 @@
             </div>
           </div>
 
+          {/* Factures générées */}
+          {!isNewSale && invoices.length > 0 && (
+            <div className="items-section">
+              <h3>Factures générées</h3>
+              <table className="items-table">
+                <thead>
+                  <tr>
+                    <th>Numéro</th>
+                    <th>Date</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map(invoice => (
+                    <tr key={invoice.id}>
+                      <td>{invoice.invoice_number}</td>
+                      <td>{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleString('fr-FR') : '—'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '10px' , justifyContent: 'flex-end'}}>
+                          <button
+                            type="button"
+                            onClick={() => window.open(`/invoices/${invoice.id}/preview/`, '_blank')}
+                            className="btn-invoice-preview"
+                            title="Prévisualiser"
+                          >
+                            Prévisualiser
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => window.open(`/invoices/${invoice.id}/pdf/`, '_blank')}
+                            className="btn-invoice-download"
+                            title="Télécharger PDF"
+                          >
+                            PDF
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Notes */}
           <div className="notes-section">
             <h3>Notes</h3>
@@ -854,13 +994,26 @@
 
           {/* Bouton de soumission */}
           <div className="submit-section">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-submit"
-            >
-              {isSubmitting ? 'Enregistrement...' : (isNewSale ? 'Enregistrer la vente' : 'Mettre à jour la vente')}
-            </button>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              {/* Bouton générer facture (seulement pour les ventes existantes) */}
+              {!isNewSale && saleId && (
+                <button
+                  type="button"
+                  onClick={handleGenerateInvoice}
+                  className="btn-generate-invoice"
+                  disabled={isSubmitting}
+                >
+                  📄 Générer facture
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="btn-submit"
+              >
+                {isSubmitting ? 'Enregistrement...' : (isNewSale ? 'Enregistrer la vente' : 'Mettre à jour la vente')}
+              </button>
+            </div>
           </div>
         </form>
       </div>

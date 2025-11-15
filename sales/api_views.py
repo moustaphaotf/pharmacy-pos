@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 
 from catalog.models import Product, Lot
 from .models import Customer, Sale, SaleItem, Payment
+from .views import generate_invoice_for_sale
 
 User = get_user_model()
 
@@ -23,11 +24,11 @@ User = get_user_model()
 @require_http_methods(["GET"])
 def product_search(request):
     """
-    Recherche de produits avec informations de stock.
+    Recherche de produits par nom ou code-barres.
     """
     query = request.GET.get('q', '').strip()
     
-    if not query or len(query) < 2:
+    if not query:
         return JsonResponse({'products': []})
     
     products = Product.objects.filter(
@@ -39,45 +40,20 @@ def product_search(request):
     
     for product in products:
         # Calculer le stock disponible
+        from catalog.models import Lot
         available_lots = Lot.objects.filter(
             product=product,
             is_active=True,
             expiration_date__gt=today,
-            remaining_quantity__gt=0,
-        )
-        total_stock = available_lots.aggregate(
-            total=Sum('remaining_quantity')
-        )['total'] or 0
-        
-        # Récupérer le prix de vente (dernier lot)
-        last_lot = Lot.objects.filter(
-            product=product,
-            is_active=True,
-        ).order_by('-created_at').first()
-        
-        sale_price = last_lot.sale_price if last_lot else Decimal('0.00')
-        
-        # Vérifier les alertes
-        is_below_threshold = total_stock <= product.stock_threshold
-        expired_stock = Lot.objects.filter(
-            product=product,
-            is_active=True,
-            expiration_date__lte=today,
             remaining_quantity__gt=0,
         ).aggregate(total=Sum('remaining_quantity'))['total'] or 0
         
         results.append({
             'id': product.id,
             'name': product.name,
-            'barcode': product.barcode,
-            'category': product.category.name,
-            'dosage_form': product.dosage_form.name,
-            'sale_price': str(sale_price),
-            'stock_available': total_stock,
-            'stock_threshold': product.stock_threshold,
-            'is_below_threshold': is_below_threshold,
-            'has_expired_stock': expired_stock > 0,
-            'expired_stock': expired_stock,
+            'barcode': product.barcode or '',
+            'sale_price': str(product.sale_price),
+            'stock_available': available_lots,
         })
     
     return JsonResponse({'products': results})
@@ -108,40 +84,32 @@ def product_stock_info(request, product_id):
     total_available = 0
     
     for lot in available_lots:
-        total_available += lot.remaining_quantity
         lots_info.append({
-            'id': lot.id,
-            'batch_number': lot.batch_number or f'Lot #{lot.id}',
+            'lot_id': lot.id,
+            'batch_number': lot.batch_number or '',
             'expiration_date': lot.expiration_date.isoformat(),
             'remaining_quantity': lot.remaining_quantity,
             'sale_price': str(lot.sale_price),
         })
+        total_available += lot.remaining_quantity
     
-    # Lots expirés
+    # Stock expiré
     expired_lots = Lot.objects.filter(
         product=product,
         is_active=True,
         expiration_date__lte=today,
         remaining_quantity__gt=0,
-    )
-    expired_stock = expired_lots.aggregate(
-        total=Sum('remaining_quantity')
-    )['total'] or 0
+    ).aggregate(total=Sum('remaining_quantity'))['total'] or 0
     
-    # Prix de vente (dernier lot)
-    last_lot = Lot.objects.filter(
-        product=product,
-        is_active=True,
-    ).order_by('-created_at').first()
-    
-    sale_price = last_lot.sale_price if last_lot else Decimal('0.00')
+    # Prix de vente (basé sur le dernier lot)
+    sale_price = product.sale_price
     
     return JsonResponse({
         'product_id': product.id,
         'product_name': product.name,
         'sale_price': str(sale_price),
         'total_available': total_available,
-        'expired_stock': expired_stock,
+        'expired_stock': expired_lots,
         'stock_threshold': product.stock_threshold,
         'is_below_threshold': total_available <= product.stock_threshold,
         'available_lots': lots_info,
@@ -152,14 +120,17 @@ def product_stock_info(request, product_id):
 @require_http_methods(["POST"])
 def validate_sale_item(request):
     """
-    Valide si une quantité peut être vendue pour un produit.
-    Retourne les lots qui seront utilisés (FEFO).
+    Valide un item de vente et retourne le prix moyen pondéré.
     """
     try:
         data = json.loads(request.body)
-        product_id = data.get('product_id')
-        quantity = int(data.get('quantity', 0))
-    except (json.JSONDecodeError, ValueError, KeyError):
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'JSON invalide'}, status=400)
+    
+    product_id = data.get('product_id')
+    quantity = data.get('quantity', 1)
+    
+    if not product_id:
         return JsonResponse({'error': 'Données invalides'}, status=400)
     
     if quantity <= 0:
@@ -180,27 +151,23 @@ def validate_sale_item(request):
         remaining_quantity__gt=0,
     ).order_by('expiration_date', 'created_at')
     
+    # Calculer combien on peut prendre de chaque lot
     lots_to_use = []
     remaining_quantity = quantity
-    total_available = 0
     
     for lot in available_lots:
-        total_available += lot.remaining_quantity
         if remaining_quantity <= 0:
             break
         
         quantity_from_lot = min(lot.remaining_quantity, remaining_quantity)
         lots_to_use.append({
-            'lot_id': lot.id,
-            'batch_number': lot.batch_number or f'Lot #{lot.id}',
-            'expiration_date': lot.expiration_date.isoformat(),
+            'lot': lot,
             'quantity': quantity_from_lot,
-            'sale_price': str(lot.sale_price),
-            'remaining_in_lot': lot.remaining_quantity,
         })
         remaining_quantity -= quantity_from_lot
     
     if remaining_quantity > 0:
+        total_available = quantity - remaining_quantity
         return JsonResponse({
             'valid': False,
             'error': f'Stock insuffisant. Disponible: {total_available}, Demandé: {quantity}',
@@ -212,12 +179,14 @@ def validate_sale_item(request):
     # Documentation: docs/AVERAGE_PRICE.md
     # Quand plusieurs lots avec des prix différents sont utilisés pour une vente,
     # on calcule un prix moyen pondéré pour afficher un prix unitaire unique.
-    # Exemple: 10 unités à 1000 FCFA + 2 unités à 1200 FCFA = 1033.33 FCFA/unité
     total_price = Decimal('0.00')
     for lot_info in lots_to_use:
-        total_price += Decimal(lot_info['sale_price']) * lot_info['quantity']
+        lot = lot_info['lot']
+        qty = lot_info['quantity']
+        total_price += lot.sale_price * Decimal(str(qty))
     
-    average_price = total_price / quantity if quantity > 0 else Decimal('0.00')
+    average_price = total_price / Decimal(str(quantity))
+    total_price = average_price * Decimal(str(quantity))
     
     return JsonResponse({
         'valid': True,
@@ -232,6 +201,51 @@ def validate_sale_item(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+def customer_list(request):
+    """
+    Liste des clients pour le select.
+    Exclut les clients anonymes par défaut.
+    """
+    # Exclure les clients anonymes de la liste déroulante
+    # Utiliser .only() pour ne charger que les champs nécessaires
+    customers = Customer.objects.filter(
+        is_anonymous=False
+    ).only(
+        'id', 'name', 'phone', 'email', 'credit_balance'
+    ).order_by('name')[:100]
+    
+    results = []
+    for customer in customers:
+        results.append({
+            'id': customer.id,
+            'name': customer.name,
+            'phone': customer.phone or '',
+            'email': customer.email or '',
+            'credit_balance': str(customer.credit_balance),
+        })
+    
+    return JsonResponse({'customers': results})
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def customer_credit_info(request, customer_id):
+    """
+    Récupère les informations de crédit d'un client.
+    """
+    try:
+        customer = Customer.objects.only('credit_balance').get(pk=customer_id)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Client non trouvé'}, status=404)
+    
+    return JsonResponse({
+        'customer_id': customer.id,
+        'credit_balance': str(customer.credit_balance),
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
 def sale_detail(request, sale_id):
     """
     Récupère les détails d'une vente existante pour l'édition.
@@ -239,7 +253,8 @@ def sale_detail(request, sale_id):
     try:
         sale = Sale.objects.select_related('customer', 'user').prefetch_related(
             'items__product',
-            'payments'
+            'payments',
+            'invoices'
         ).get(pk=sale_id)
     except Sale.DoesNotExist:
         return JsonResponse({'error': 'Vente non trouvée'}, status=404)
@@ -260,8 +275,8 @@ def sale_detail(request, sale_id):
     payments = []
     for payment in sale.payments.all():
         payments.append({
-            'id': payment.id,
-            'amount': str(payment.amount),
+            'id': payment.id, # ID pour la mise à jour
+            'amount': payment.amount,
             'payment_method': payment.payment_method,
         })
     
@@ -276,6 +291,16 @@ def sale_detail(request, sale_id):
                 'phone': sale.customer.phone or '',
                 'email': sale.customer.email or '',
             }
+    
+    # Récupérer les factures
+    invoices = []
+    for invoice in sale.invoices.all().order_by('-invoice_date'):
+        invoices.append({
+            'id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'invoice_date': invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+            'has_pdf': bool(invoice.pdf),
+        })
     
     return JsonResponse({
         'sale_id': sale.id,
@@ -295,6 +320,7 @@ def sale_detail(request, sale_id):
         'status': sale.status,
         'items': items,
         'payments': payments,
+        'invoices': invoices,
     })
 
 
@@ -309,24 +335,19 @@ def create_sale(request):
         "customer_id": 1,
         "sale_date": "2024-01-01T10:00:00Z",
         "tax_amount": "0.00",
-        "discount_amount": "0.00",
+        "discount_type": "amount",
+        "discount_value": "0.00",
         "notes": "",
         "items": [
-            {
-                "product_id": 1,
-                "quantity": 2
-            }
+            {"product_id": 1, "quantity": 2}
         ],
         "payments": [
-            {
-                "amount": "100.00",
-                "payment_method": "cash"
-            }
+            {"amount": "100.00", "payment_method": "cash"}
         ],
         "anonymous_customer": {
-            "name": "Client Passager",
+            "name": "John Doe",
             "phone": "123456789",
-            "email": "client@example.com"
+            "email": "john@example.com"
         }
     }
     """
@@ -347,34 +368,24 @@ def create_sale(request):
     # Gérer le client anonyme ou le client existant
     customer = None
     if anonymous_customer_data:
-        # Créer un client anonyme
-        if not anonymous_customer_data.get('name') or not anonymous_customer_data.get('name').strip():
-            errors['anonymous_customer'] = 'Le nom du client anonyme est requis'
+        # Créer ou réutiliser un client anonyme
+        name = anonymous_customer_data.get('name', '').strip()
+        phone = (anonymous_customer_data.get('phone') or '').strip() or ''
+        email = (anonymous_customer_data.get('email') or '').strip() or ''
+        
+        if not name:
+            errors['anonymous_customer'] = {'name': 'Le nom est requis pour un client anonyme'}
         else:
-            # Vérifier si un client avec le même nom/téléphone existe déjà
-            name = anonymous_customer_data.get('name', '').strip()
-            phone = anonymous_customer_data.get('phone') or ''
-            phone = phone.strip() if phone else ''  # Utiliser '' au lieu de None car phone n'a pas null=True
-            email = anonymous_customer_data.get('email') or ''
-            email = email.strip() if email else ''  # Utiliser '' au lieu de None car email n'a pas null=True
-            
             # Chercher un client anonyme existant avec le même nom et téléphone
             existing_customer = Customer.objects.filter(
+                is_anonymous=True,
                 name=name,
-                is_anonymous=True
-            )
-            if phone:
-                existing_customer = existing_customer.filter(phone=phone)
-            else:
-                existing_customer = existing_customer.filter(phone='')  # Utiliser '' au lieu de phone__isnull=True
-            
-            existing_customer = existing_customer.first()
+                phone=phone,
+            ).first()
             
             if existing_customer:
-                # Utiliser le client anonyme existant
                 customer = existing_customer
             else:
-                # Créer un nouveau client anonyme
                 customer = Customer.objects.create(
                     name=name,
                     phone=phone,
@@ -386,8 +397,7 @@ def create_sale(request):
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
             errors['customer_id'] = 'Client non trouvé'
-    
-    if not customer and not anonymous_customer_data and not customer_id:
+    else:
         errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
@@ -408,95 +418,89 @@ def create_sale(request):
         errors['items'] = 'Au moins un produit est requis'
     
     validated_items = []
-    for idx, item_data in enumerate(items_data):
-        item_errors = {}
+    for item_data in items_data:
         product_id = item_data.get('product_id')
-        quantity = item_data.get('quantity', 0)
+        quantity = item_data.get('quantity', 1)
         
         if not product_id:
-            item_errors['product_id'] = 'Produit requis'
-        else:
-            try:
-                product = Product.objects.get(pk=product_id)
-            except Product.DoesNotExist:
-                item_errors['product_id'] = 'Produit non trouvé'
-                product = None
-        if quantity <= 0:
-            item_errors['quantity'] = 'La quantité doit être positive'
+            errors['items'] = 'product_id est requis pour chaque item'
+            continue
         
-        if item_errors:
-            errors[f'items.{idx}'] = item_errors
-        elif product:
-            # Valider le stock
-            today = date.today()
-            available_lots = Lot.objects.filter(
-                product=product,
-                is_active=True,
-                expiration_date__gt=today,
-                remaining_quantity__gt=0,
-            ).order_by('expiration_date', 'created_at')
-            
-            total_available = available_lots.aggregate(
-                total=Sum('remaining_quantity')
-            )['total'] or 0
-            
-            if quantity > total_available:
-                item_errors['quantity'] = f'Stock insuffisant. Disponible: {total_available}'
-                errors[f'items.{idx}'] = item_errors
-            else:
-                # Calculer le prix moyen pondéré (FEFO)
-                lots_to_use = []
-                remaining_qty = quantity
-                total_price = Decimal('0.00')
-                
-                for lot in available_lots:
-                    if remaining_qty <= 0:
-                        break
-                    qty_from_lot = min(lot.remaining_quantity, remaining_qty)
-                    lots_to_use.append({
-                        'lot': lot,
-                        'quantity': qty_from_lot,
-                    })
-                    total_price += lot.sale_price * qty_from_lot
-                    remaining_qty -= qty_from_lot
-                
-                average_price = total_price / quantity if quantity > 0 else Decimal('0.00')
-                
-                validated_items.append({
-                    'product': product,
-                    'quantity': quantity,
-                    'unit_price': average_price,
-                    'line_total': total_price,
-                    'lots': lots_to_use,
-                })
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            errors['items'] = f'Produit {product_id} non trouvé'
+            continue
+        
+        if quantity <= 0:
+            errors['items'] = 'La quantité doit être positive'
+            continue
+        
+        # Valider le stock disponible
+        today = date.today()
+        available_lots = Lot.objects.filter(
+            product=product,
+            is_active=True,
+            expiration_date__gt=today,
+            remaining_quantity__gt=0,
+        ).order_by('expiration_date', 'created_at')
+        
+        total_available = sum(lot.remaining_quantity for lot in available_lots)
+        if total_available < quantity:
+            errors['items'] = f'Stock insuffisant pour {product.name}. Disponible: {total_available}, Demandé: {quantity}'
+            continue
+        
+        # Calculer le prix moyen pondéré
+        lots_to_use = []
+        remaining_qty = quantity
+        total_price = Decimal('0.00')
+        
+        for lot in available_lots:
+            if remaining_qty <= 0:
+                break
+            qty_from_lot = min(lot.remaining_quantity, remaining_qty)
+            lots_to_use.append({
+                'lot': lot,
+                'quantity': qty_from_lot,
+            })
+            total_price += lot.sale_price * Decimal(str(qty_from_lot))
+            remaining_qty -= qty_from_lot
+        
+        average_price = total_price / Decimal(str(quantity))
+        line_total = average_price * Decimal(str(quantity))
+        
+        validated_items.append({
+            'product': product,
+            'product_id': product_id,
+            'quantity': quantity,
+            'unit_price': average_price,
+            'line_total': line_total,
+            'lots': lots_to_use,
+        })
     
     # Validation des paiements
     payments_data = data.get('payments', [])
+    if not payments_data:
+        errors['payments'] = 'Au moins un paiement est requis'
+    
     validated_payments = []
-    for idx, payment_data in enumerate(payments_data):
-        payment_errors = {}
-        amount = payment_data.get('amount')
+    for payment_data in payments_data:
+        amount = Decimal(str(payment_data.get('amount', '0.00')))
         payment_method = payment_data.get('payment_method', 'cash')
         
-        try:
-            amount = Decimal(str(amount))
-            if amount <= 0:
-                payment_errors['amount'] = 'Le montant doit être positif'
-        except (ValueError, TypeError):
-            payment_errors['amount'] = 'Montant invalide'
+        if amount <= 0:
+            errors['payments'] = 'Le montant du paiement doit être positif'
+            continue
         
-        if payment_method not in [choice[0] for choice in Payment.PaymentMethod.choices]:
-            payment_errors['payment_method'] = 'Mode de paiement invalide'
+        if payment_method not in ['cash', 'card', 'mobile_money', 'bank_transfer', 'other']:
+            errors['payments'] = 'Méthode de paiement invalide'
+            continue
         
-        if payment_errors:
-            errors[f'payments.{idx}'] = payment_errors
-        else:
-            validated_payments.append({
-                'amount': amount,
-                'payment_method': payment_method,
-            })
+        validated_payments.append({
+            'amount': amount,
+            'payment_method': payment_method,
+        })
     
-    # Si erreurs, retourner
     if errors:
         return JsonResponse({
             'success': False,
@@ -598,9 +602,22 @@ def create_sale(request):
             if customer:
                 Sale.recalculate_customer_credit(customer.id)
             
+            # Générer automatiquement la facture
+            try:
+                invoice = generate_invoice_for_sale(sale, save_pdf=True)
+                invoice_id = invoice.id
+                invoice_number = invoice.invoice_number
+            except Exception as invoice_error:
+                # Ne pas faire échouer la création de vente si la génération de facture échoue
+                print(f'Erreur lors de la génération de la facture: {invoice_error}')
+                invoice_id = None
+                invoice_number = None
+            
             return JsonResponse({
                 'success': True,
                 'sale_id': sale.id,
+                'invoice_id': invoice_id,
+                'invoice_number': invoice_number,
                 'sale': {
                     'id': sale.id,
                     'subtotal': str(sale.subtotal),
@@ -650,34 +667,24 @@ def update_sale(request, sale_id):
     # Gérer le client anonyme ou le client existant (même logique que create_sale)
     customer = None
     if anonymous_customer_data:
-        # Créer un client anonyme
-        if not anonymous_customer_data.get('name') or not anonymous_customer_data.get('name').strip():
-            errors['anonymous_customer'] = 'Le nom du client anonyme est requis'
+        # Créer ou réutiliser un client anonyme
+        name = anonymous_customer_data.get('name', '').strip()
+        phone = (anonymous_customer_data.get('phone') or '').strip() or ''
+        email = (anonymous_customer_data.get('email') or '').strip() or ''
+        
+        if not name:
+            errors['anonymous_customer'] = {'name': 'Le nom est requis pour un client anonyme'}
         else:
-            # Vérifier si un client avec le même nom/téléphone existe déjà
-            name = anonymous_customer_data.get('name', '').strip()
-            phone = anonymous_customer_data.get('phone') or ''
-            phone = phone.strip() if phone else ''  # Utiliser '' au lieu de None car phone n'a pas null=True
-            email = anonymous_customer_data.get('email') or ''
-            email = email.strip() if email else ''  # Utiliser '' au lieu de None car email n'a pas null=True
-            
             # Chercher un client anonyme existant avec le même nom et téléphone
             existing_customer = Customer.objects.filter(
+                is_anonymous=True,
                 name=name,
-                is_anonymous=True
-            )
-            if phone:
-                existing_customer = existing_customer.filter(phone=phone)
-            else:
-                existing_customer = existing_customer.filter(phone='')  # Utiliser '' au lieu de phone__isnull=True
-            
-            existing_customer = existing_customer.first()
+                phone=phone,
+            ).first()
             
             if existing_customer:
-                # Utiliser le client anonyme existant
                 customer = existing_customer
             else:
-                # Créer un nouveau client anonyme
                 customer = Customer.objects.create(
                     name=name,
                     phone=phone,
@@ -689,8 +696,7 @@ def update_sale(request, sale_id):
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
             errors['customer_id'] = 'Client non trouvé'
-    
-    if not customer and not anonymous_customer_data and not customer_id:
+    else:
         errors['customer'] = 'Un client est requis'
     
     tax_amount = Decimal(str(data.get('tax_amount', '0.00')))
@@ -711,105 +717,103 @@ def update_sale(request, sale_id):
         errors['items'] = 'Au moins un produit est requis'
     
     validated_items = []
-    for idx, item_data in enumerate(items_data):
-        item_errors = {}
+    for item_data in items_data:
         product_id = item_data.get('product_id')
-        quantity = item_data.get('quantity', 0)
+        quantity = item_data.get('quantity', 1)
         
         if not product_id:
-            item_errors['product_id'] = 'Produit requis'
-        else:
-            try:
-                product = Product.objects.get(pk=product_id)
-            except Product.DoesNotExist:
-                item_errors['product_id'] = 'Produit non trouvé'
-                product = None
-        if quantity <= 0:
-            item_errors['quantity'] = 'La quantité doit être positive'
+            errors['items'] = 'product_id est requis pour chaque item'
+            continue
         
-        if item_errors:
-            errors[f'items.{idx}'] = item_errors
-        elif product:
-            # Valider le stock (en tenant compte des quantités déjà vendues)
-            today = date.today()
-            available_lots = Lot.objects.filter(
-                product=product,
-                is_active=True,
-                expiration_date__gt=today,
-                remaining_quantity__gt=0,
-            ).order_by('expiration_date', 'created_at')
-            
-            # Calculer le stock disponible + ce qui a déjà été vendu dans cette vente
-            total_available = available_lots.aggregate(
-                total=Sum('remaining_quantity')
-            )['total'] or 0
-            
-            # Récupérer la quantité déjà vendue pour ce produit dans cette vente
-            existing_item = sale.items.filter(product=product).first()
-            already_sold = existing_item.quantity if existing_item else 0
-            
-            # Stock disponible = stock actuel + ce qui a déjà été vendu (qu'on peut remettre en stock)
-            total_available_with_return = total_available + already_sold
-            
-            if quantity > total_available_with_return:
-                item_errors['quantity'] = f'Stock insuffisant. Disponible: {total_available_with_return}'
-                errors[f'items.{idx}'] = item_errors
-            else:
-                # Calculer le prix moyen pondéré (FEFO)
-                lots_to_use = []
-                remaining_qty = quantity
-                total_price = Decimal('0.00')
-                
-                for lot in available_lots:
-                    if remaining_qty <= 0:
-                        break
-                    qty_from_lot = min(lot.remaining_quantity, remaining_qty)
-                    lots_to_use.append({
-                        'lot': lot,
-                        'quantity': qty_from_lot,
-                    })
-                    total_price += lot.sale_price * qty_from_lot
-                    remaining_qty -= qty_from_lot
-                
-                average_price = total_price / quantity if quantity > 0 else Decimal('0.00')
-                
-                validated_items.append({
-                    'product': product,
-                    'quantity': quantity,
-                    'unit_price': average_price,
-                    'line_total': total_price,
-                    'lots': lots_to_use,
-                    'existing_item': existing_item,
-                })
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            errors['items'] = f'Produit {product_id} non trouvé'
+            continue
+        
+        if quantity <= 0:
+            errors['items'] = 'La quantité doit être positive'
+            continue
+        
+        # Valider le stock disponible (en tenant compte du stock déjà réservé par cette vente)
+        today = date.today()
+        available_lots = Lot.objects.filter(
+            product=product,
+            is_active=True,
+            expiration_date__gt=today,
+            remaining_quantity__gt=0,
+        ).order_by('expiration_date', 'created_at')
+        
+        # Calculer le stock disponible en tenant compte des items existants de cette vente
+        existing_item = sale.items.filter(product_id=product_id).first()
+        existing_quantity = existing_item.quantity if existing_item else 0
+        
+        total_available = sum(lot.remaining_quantity for lot in available_lots) + existing_quantity
+        if total_available < quantity:
+            errors['items'] = f'Stock insuffisant pour {product.name}. Disponible: {total_available}, Demandé: {quantity}'
+            continue
+        
+        # Calculer le prix moyen pondéré
+        lots_to_use = []
+        remaining_qty = quantity
+        total_price = Decimal('0.00')
+        
+        # Si on augmente la quantité, on doit prendre en compte le stock déjà réservé
+        if existing_item and quantity > existing_quantity:
+            # Restaurer le stock des items existants d'abord
+            for sale_item_lot in existing_item.lot_items.all():
+                lot = sale_item_lot.lot
+                lot.adjust_quantity(quantity_delta=sale_item_lot.quantity)
+                remaining_qty -= sale_item_lot.quantity
+        
+        for lot in available_lots:
+            if remaining_qty <= 0:
+                break
+            qty_from_lot = min(lot.remaining_quantity, remaining_qty)
+            lots_to_use.append({
+                'lot': lot,
+                'quantity': qty_from_lot,
+            })
+            total_price += lot.sale_price * Decimal(str(qty_from_lot))
+            remaining_qty -= qty_from_lot
+        
+        average_price = total_price / Decimal(str(quantity))
+        line_total = average_price * Decimal(str(quantity))
+        
+        validated_items.append({
+            'product': product,
+            'product_id': product_id,
+            'quantity': quantity,
+            'unit_price': average_price,
+            'line_total': line_total,
+            'lots': lots_to_use,
+        })
     
     # Validation des paiements
     payments_data = data.get('payments', [])
-    validated_payments = []
-    for idx, payment_data in enumerate(payments_data):
-        payment_errors = {}
-        amount = payment_data.get('amount')
-        payment_method = payment_data.get('payment_method', 'cash')
-        
-        try:
-            amount = Decimal(str(amount))
-            if amount <= 0:
-                payment_errors['amount'] = 'Le montant doit être positif'
-        except (ValueError, TypeError):
-            payment_errors['amount'] = 'Montant invalide'
-        
-        if payment_method not in [choice[0] for choice in Payment.PaymentMethod.choices]:
-            payment_errors['payment_method'] = 'Mode de paiement invalide'
-        
-        if payment_errors:
-            errors[f'payments.{idx}'] = payment_errors
-        else:
-            validated_payments.append({
-                'id': payment_data.get('id'),  # ID optionnel pour la mise à jour
-                'amount': amount,
-                'payment_method': payment_method,
-            })
+    if not payments_data:
+        errors['payments'] = 'Au moins un paiement est requis'
     
-    # Si erreurs, retourner
+    validated_payments = []
+    for payment_data in payments_data:
+        amount = Decimal(str(payment_data.get('amount', '0.00')))
+        payment_method = payment_data.get('payment_method', 'cash')
+        payment_id = payment_data.get('id')  # ID pour la mise à jour
+        
+        if amount <= 0:
+            errors['payments'] = 'Le montant du paiement doit être positif'
+            continue
+        
+        if payment_method not in ['cash', 'card', 'mobile_money', 'bank_transfer', 'other']:
+            errors['payments'] = 'Méthode de paiement invalide'
+            continue
+        
+        validated_payments.append({
+            'id': payment_id,
+            'amount': amount,
+            'payment_method': payment_method,
+        })
+    
     if errors:
         return JsonResponse({
             'success': False,
@@ -981,46 +985,32 @@ def update_sale(request, sale_id):
 
 
 @csrf_exempt
-@require_http_methods(["GET"])
-def customer_list(request):
+@require_http_methods(["POST"])
+def generate_invoice(request, sale_id):
     """
-    Liste des clients pour le select.
-    Exclut les clients anonymes par défaut.
+    Génère une nouvelle facture pour une vente existante.
     """
-    # Exclure les clients anonymes de la liste déroulante
-    # Utiliser .only() pour ne charger que les champs nécessaires
-    customers = Customer.objects.filter(
-        is_anonymous=False
-    ).only(
-        'id', 'name', 'phone', 'email', 'credit_balance'
-    ).order_by('name')[:100]
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Non authentifié'}, status=401)
     
-    results = []
-    for customer in customers:
-        results.append({
-            'id': customer.id,
-            'name': customer.name,
-            'phone': customer.phone or '',
-            'email': customer.email or '',
-            'credit_balance': str(customer.credit_balance),
-        })
-    
-    return JsonResponse({'customers': results})
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def customer_credit_info(request, customer_id):
-    """
-    Récupère les informations de crédit d'un client.
-    """
     try:
-        customer = Customer.objects.get(pk=customer_id)
-    except Customer.DoesNotExist:
-        return JsonResponse({'error': 'Client non trouvé'}, status=404)
+        sale = Sale.objects.get(pk=sale_id)
+    except Sale.DoesNotExist:
+        return JsonResponse({'error': 'Vente non trouvée'}, status=404)
     
-    return JsonResponse({
-        'customer_id': customer.id,
-        'customer_name': customer.name,
-        'credit_balance': str(customer.credit_balance),
-    })
+    try:
+        # Générer la facture
+        invoice = generate_invoice_for_sale(sale, save_pdf=True)
+        
+        return JsonResponse({
+            'success': True,
+            'invoice_id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'preview_url': f'/invoices/{invoice.id}/preview/',
+            'pdf_url': f'/invoices/{invoice.id}/pdf/',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Erreur lors de la génération de la facture: {str(e)}',
+        }, status=500)

@@ -6,6 +6,7 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/sales/', include('sales.api_urls')),
+    path('invoices/', include('sales.invoice_urls')),
 ]
 
 if settings.DEBUG:

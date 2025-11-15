@@ -13,9 +13,9 @@ from .sale import Sale
 
 
 class Invoice(TimeStampedModel):
-    sale = models.OneToOneField(
+    sale = models.ForeignKey(
         Sale,
-        related_name='invoice',
+        related_name='invoices',
         on_delete=models.CASCADE,
         verbose_name='Vente',
     )

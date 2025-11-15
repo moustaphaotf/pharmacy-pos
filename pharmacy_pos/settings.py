@@ -149,6 +149,18 @@ if not DEBUG:
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ============================================================================
+# Informations de la pharmacie (pour les factures)
+# ============================================================================
+PHARMACY_SETTINGS = {
+    'name': os.getenv('PHARMACY_NAME', 'Pharmacie de la Poste'),
+    'address': os.getenv('PHARMACY_ADDRESS', 'Pita Centre'),
+    'phone': os.getenv('PHARMACY_PHONE', '620000000'),
+    'email': os.getenv('PHARMACY_EMAIL', 'contact@pharmaciedelaposte.com'),
+    'logo_path': os.getenv('PHARMACY_LOGO_PATH', ''),  # Chemin vers le logo (static)
+    'legal_mentions': os.getenv('PHARMACY_LEGAL_MENTIONS', ''),
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
