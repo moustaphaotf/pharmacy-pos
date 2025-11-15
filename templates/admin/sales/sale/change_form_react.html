@@ -28,11 +28,12 @@
 {% block extrahead %}
 {{ block.super }}
 <!-- React et ReactDOM via CDN -->
-<script async defer src="{% static 'js/react.production.min.js' %}"></script>
-<script async defer src="{% static 'js/react-dom.production.min.js' %}"></script>
+<script async defer src="{% static 'https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js' %}"></script>
+<script async defer src="{% static 'https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js' %}"></script>
 
 <!-- Babel Standalone pour transformer le JSX -->
-<script async defer src="{% static 'js/babel.min.js' %}"></script>
+<script async defer src="{% static 'https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js' %}"></script>
+
 <script async defer>
     // Variables globales pour React
     window.SALE_FORM_CONFIG = {
